@@ -67,14 +67,14 @@ func getHexPosition(i int, dc bool) (float64, float64) {
 	layer := int(math.Round(math.Sqrt(float64(j) / 3.0)))
 
 	firstIdxInLayer := 3*layer*(layer-1) + 1
-	//lastIdxInLayer := 3*layer*(layer+1) + 1
-	numInLayer := j - firstIdxInLayer
-
 	if true {
+		lastIdxInLayer := 3*layer*(layer+1) + 1
+		numInLayer := j - firstIdxInLayer
+		totalInSide := (lastIdxInLayer - firstIdxInLayer) / 6
 		side0 := numInLayer % 6
 		side1 := hexaSpiralSideChoice[side0]
 		pos := numInLayer / 6
-		j = side1*6 + pos
+		j = side1*totalInSide + pos + firstIdxInLayer
 	}
 
 	side := float64((j - firstIdxInLayer) / layer)
