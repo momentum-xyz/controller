@@ -1,0 +1,26 @@
+mqtt:
+  host: ""
+  port: 1883
+  user: ""
+  password: ""
+mysql:
+  database: ""
+  host: ""
+  port: 3306
+  username: ""
+  password: ""
+influx:
+  url: ""
+  org: ""
+  bucket: ""
+  token: ""
+keycloak:
+  server: ""
+  secret: ""
+  client: ""
+  realm: ""
+settings:
+  bind_address: "127.0.0.1"
+  bind_port: 4000
+  loglevel: 1
+  
