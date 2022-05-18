@@ -2,6 +2,7 @@ package position
 
 import (
 	"math"
+	"math/rand"
 
 	cm "github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/utils"
@@ -10,9 +11,10 @@ import (
 const (
 	hexaSpiralAngleDefaultValue            = 0.0
 	hexaSpiralRSpaceDefaultValue           = 50.0
-	hexaSpiralRandDisplacementDefaultValue = 10
+	hexaSpiralRandDisplacementDefaultValue = 0.0
 	hexaSpiralVShiftDefaultValue           = 10.0
 	hexaSpiralDrawCenterDefaultValue       = true
+	hexaSpiralScatterDefaultValue          = true
 )
 
 var hexaSpiralSideChoice = []int{0, 3, 5, 2, 4, 1}
@@ -23,6 +25,7 @@ type hexaSpiral struct {
 	Vshift           float64 `json:"Vshift"`
 	DrawCenter       bool    `json:"DrawCenter"`
 	RandDisplacement float64 `json:"RandDisplacement"`
+	Scatter          bool    `json:"Scatter"`
 }
 
 func NewHexaSpiral(parameterMap map[string]interface{}) Algo {
@@ -32,14 +35,24 @@ func NewHexaSpiral(parameterMap map[string]interface{}) Algo {
 		Rspace:           utils.F64FromMap(parameterMap, "Rspace", hexaSpiralRSpaceDefaultValue),
 		RandDisplacement: utils.F64FromMap(parameterMap, "RandDisplacement", hexaSpiralRandDisplacementDefaultValue),
 		DrawCenter:       utils.BoolFromMap(parameterMap, "DrawCenter", hexaSpiralDrawCenterDefaultValue),
+		Scatter:          utils.BoolFromMap(parameterMap, "Scatter", hexaSpiralDrawCenterDefaultValue),
 	}
 }
 
 func (h *hexaSpiral) CalcPos(parentTheta float64, parentVector cm.Vec3, i, n int) (cm.Vec3, float64) {
 	parent := parentVector.ToVec3f64()
 
-	x, y := getHexPosition(i, h.DrawCenter)
+	x, y := getHexPosition(i, h.DrawCenter, h.Scatter)
 
+	if h.RandDisplacement > 0.0 {
+		rand.Seed(int64(i + i*n + n*n*int(h.Rspace*100000) + int(h.Vshift*100)))
+		randomAngle := rand.Float64() * 2 * math.Pi
+		randomDisplacement := math.Sqrt(rand.Float64()) * h.RandDisplacement
+		xShift := randomDisplacement * math.Cos(randomAngle)
+		yShift := randomDisplacement * math.Sin(randomAngle)
+		x += xShift
+		y += yShift
+	}
 	p := cm.Vec3f64{
 		X: math.Round((parent.X+x*h.Rspace)*10.0) / 10.0,
 		Y: parent.Y + h.Vshift,
@@ -53,7 +66,7 @@ func (*hexaSpiral) Name() string {
 	return "hexaspiral"
 }
 
-func getHexPosition(i int, dc bool) (float64, float64) {
+func getHexPosition(i int, dc bool, scatter bool) (float64, float64) {
 
 	j := i
 	if !dc {
@@ -67,7 +80,7 @@ func getHexPosition(i int, dc bool) (float64, float64) {
 	layer := int(math.Round(math.Sqrt(float64(j) / 3.0)))
 
 	firstIdxInLayer := 3*layer*(layer-1) + 1
-	if true {
+	if scatter {
 		lastIdxInLayer := 3*layer*(layer+1) + 1
 		numInLayer := j - firstIdxInLayer
 		totalInSide := (lastIdxInLayer - firstIdxInLayer) / 6
