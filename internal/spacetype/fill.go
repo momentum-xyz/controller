@@ -35,6 +35,8 @@ func FillPlacement(placementMap map[string]interface{}, placements *map[uuid.UUI
 		par = position.NewSector(placementMap)
 	case "spiral":
 		par = position.NewSpiral(placementMap)
+	case "hexaspiral":
+		par = position.NewHexaSpiral(placementMap)
 	}
 
 	(*placements)[kind] = par
