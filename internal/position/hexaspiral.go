@@ -50,15 +50,16 @@ func (*hexaSpiral) Name() string {
 
 func getHexPosition(i int) (float64, float64) {
 
-	if i == 0 {
-		return 0, 0
-	}
+	//if i == 0 {
+	//	return 0, 0
+	//}
 
-	layer := int(math.Round(math.Sqrt(float64(i) / 3.0)))
+	j := i + 1
+	layer := int(math.Round(math.Sqrt(float64(j) / 3.0)))
 
 	firstIdxInLayer := 3*layer*(layer-1) + 1
-	side := float64((i - firstIdxInLayer) / layer)
-	idx := float64((i - firstIdxInLayer) % layer)
+	side := float64((j - firstIdxInLayer) / layer)
+	idx := float64((j - firstIdxInLayer) % layer)
 
 	x := float64(layer)*math.Cos((side-1.0)*math.Pi/3.0) + (idx+1.0)*math.Cos((side+1.0)*math.Pi/3.0)
 	y := -float64(layer)*math.Sin((side-1)*math.Pi/3) - (idx+1)*math.Sin((side+1)*math.Pi/3)
