@@ -51,6 +51,14 @@ func F64FromMap(parametersMap map[string]interface{}, k string, defaultValue flo
 	return defaultValue
 }
 
+func BoolFromMap(parametersMap map[string]interface{}, k string, defaultValue bool) bool {
+	if v1, ok := parametersMap[k]; ok {
+		return v1.(bool)
+	}
+
+	return defaultValue
+}
+
 func SpaceTypeFromMap(parametersMap map[string]interface{}) uuid.UUID {
 	rt, ok := parametersMap["kind"]
 	if !ok || rt.(string) == "default" {

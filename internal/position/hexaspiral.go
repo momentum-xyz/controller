@@ -12,12 +12,16 @@ const (
 	hexaSpiralRSpaceDefaultValue           = 50.0
 	hexaSpiralRandDisplacementDefaultValue = 10
 	hexaSpiralVShiftDefaultValue           = 10.0
+	hexaSpiralDrawCenterDefaultValue       = true
 )
+
+var hexaSpiralSideChoice = []int{0, 3, 5, 2, 4, 1}
 
 type hexaSpiral struct {
 	Angle            float64 `json:"angle"`
 	Rspace           float64 `json:"Rspace"`
 	Vshift           float64 `json:"Vshift"`
+	DrawCenter       bool    `json:"DrawCenter"`
 	RandDisplacement float64 `json:"RandDisplacement"`
 }
 
@@ -27,13 +31,14 @@ func NewHexaSpiral(parameterMap map[string]interface{}) Algo {
 		Vshift:           utils.F64FromMap(parameterMap, "Vshift", hexaSpiralVShiftDefaultValue),
 		Rspace:           utils.F64FromMap(parameterMap, "Rspace", hexaSpiralRSpaceDefaultValue),
 		RandDisplacement: utils.F64FromMap(parameterMap, "RandDisplacement", hexaSpiralRandDisplacementDefaultValue),
+		DrawCenter:       utils.BoolFromMap(parameterMap, "DrawCenter", hexaSpiralDrawCenterDefaultValue),
 	}
 }
 
 func (h *hexaSpiral) CalcPos(parentTheta float64, parentVector cm.Vec3, i, n int) (cm.Vec3, float64) {
 	parent := parentVector.ToVec3f64()
 
-	x, y := getHexPosition(i)
+	x, y := getHexPosition(i, h.DrawCenter)
 
 	p := cm.Vec3f64{
 		X: math.Round((parent.X+x*h.Rspace)*10.0) / 10.0,
@@ -48,16 +53,30 @@ func (*hexaSpiral) Name() string {
 	return "hexaspiral"
 }
 
-func getHexPosition(i int) (float64, float64) {
+func getHexPosition(i int, dc bool) (float64, float64) {
 
-	//if i == 0 {
-	//	return 0, 0
-	//}
+	j := i
+	if !dc {
+		j++
+	}
 
-	j := i + 1
+	if j == 0 {
+		return 0, 0
+	}
+
 	layer := int(math.Round(math.Sqrt(float64(j) / 3.0)))
 
 	firstIdxInLayer := 3*layer*(layer-1) + 1
+	//lastIdxInLayer := 3*layer*(layer+1) + 1
+	numInLayer := j - firstIdxInLayer
+
+	if true {
+		side0 := numInLayer % 6
+		side1 := hexaSpiralSideChoice[side0]
+		pos := numInLayer / 6
+		j = side1*6 + pos
+	}
+
 	side := float64((j - firstIdxInLayer) / layer)
 	idx := float64((j - firstIdxInLayer) % layer)
 
