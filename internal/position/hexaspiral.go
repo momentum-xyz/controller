@@ -47,7 +47,7 @@ func (h *hexaSpiral) CalcPos(parentTheta float64, parentVector cm.Vec3, i, n int
 	if h.RandDisplacement > 0.0 {
 		rand.Seed(int64(i + i*n + n*n*int(h.Rspace*100000) + int(h.Vshift*100)))
 		randomAngle := rand.Float64() * 2 * math.Pi
-		randomDisplacement := math.Sqrt(rand.Float64()) * h.RandDisplacement
+		randomDisplacement := math.Sqrt(rand.Float64()) * h.RandDisplacement / h.Rspace
 		xShift := randomDisplacement * math.Cos(randomAngle)
 		yShift := randomDisplacement * math.Sin(randomAngle)
 		x += xShift
