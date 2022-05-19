@@ -3,9 +3,10 @@ package universe
 import (
 	"encoding/json"
 
-	"github.com/momentum-xyz/controller/internal/posbus"
-
 	"github.com/google/uuid"
+
+	"github.com/momentum-xyz/posbus-protocol/posbus"
+	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 )
 
 func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
@@ -102,6 +103,6 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) {
 	)
 
 	effect := posbus.NewTriggerTransitionalBridgingEffectsOnPositionMsg(1)
-	effect.SetEffect(0, u.world.EffectsEmitter, *u.pos, *target.pos, 1001)
+	effect.SetEffect(0, u.world.EffectsEmitter, pputils.Vec3(*u.pos), pputils.Vec3(*target.pos), 1001)
 	u.world.Broadcast(effect.WebsocketMessage())
 }

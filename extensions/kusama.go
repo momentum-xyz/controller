@@ -18,8 +18,8 @@ import (
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/message"
-	"github.com/momentum-xyz/controller/internal/posbus"
 	"github.com/momentum-xyz/controller/utils"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
 	"go.etcd.io/bbolt"
 )
 

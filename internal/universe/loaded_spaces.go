@@ -6,8 +6,8 @@ import (
 
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/message"
-	"github.com/momentum-xyz/controller/internal/posbus"
 	"github.com/momentum-xyz/controller/internal/space"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	"github.com/google/uuid"
 	"github.com/sasha-s/go-deadlock"
