@@ -8,8 +8,9 @@ import (
 
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/message"
-	"github.com/momentum-xyz/controller/internal/posbus"
 	"github.com/momentum-xyz/controller/internal/socket"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
+	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
@@ -82,7 +83,7 @@ func (u *User) Register(wc *WorldController) {
 	// TODO: Update MetaMSg
 	_ = u.connection.SendDirectly(u.world.metaMsg)
 	log.Info("send own position")
-	_ = u.connection.SendDirectly(posbus.NewSendPositionMsg(ipos).WebsocketMessage())
+	_ = u.connection.SendDirectly(posbus.NewSendPositionMsg(pputils.Vec3(ipos)).WebsocketMessage())
 	log.Info("send initial world")
 	u.world.AddUserToWorld(u) // AddToWorld is happening there
 	wc.hub.mqtt.SafeSubscribe("user_control/"+wc.ID.String()+"/"+u.ID.String()+"/#", 1, u.MQTTMessageHandler)

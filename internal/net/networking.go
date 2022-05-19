@@ -10,10 +10,10 @@ import (
 	"github.com/momentum-xyz/controller/internal/auth"
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/message"
-	"github.com/momentum-xyz/controller/internal/posbus"
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/utils"
-	"github.com/momentum-xyz/posbus-schema/go/api"
+	"github.com/momentum-xyz/posbus-protocol/flatbuff/go/api"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	// Third-Party
 	"github.com/dgrijalva/jwt-go"
