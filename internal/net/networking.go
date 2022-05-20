@@ -58,7 +58,7 @@ func NewNetworking(cfg *config.Config) *Networking {
 	http.HandleFunc("/config/ui-client", n.cfgUIClient)
 	return n
 }
-
+x
 func (n *Networking) ListenAndServe(address, port string) error {
 	log.Info("ListenAndServe: ", address+":"+port)
 	return http.ListenAndServe(address+":"+port, nil)
@@ -84,7 +84,7 @@ func (n *Networking) cfgUIClient(w http.ResponseWriter, r *http.Request) {
 		err := errors.WithMessage(err, "failed to serve ui client cfg")
 		log.Error(err)
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("{\"error\": %+v}", err)))
+		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))
 		return
 	}
 

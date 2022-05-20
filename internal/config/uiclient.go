@@ -17,7 +17,7 @@ type UIClient struct {
 	GoogleAPIClientID        string `yaml:"google_api_client_id" json:"GOOGLE_API_CLIENT_ID" envconfig:"GOOGLE_API_CLIENT_ID"`
 	GoogleAPIDeveloperKey    string `yaml:"google_api_developer_key" json:"GOOGLE_API_DEVELOPER_KEY" envconfig:"GOOGLE_API_DEVELOPER_KEY"`
 	MiroAppID                string `yaml:"miro_app_id" json:"MIRO_APP_ID" envconfig:"MIRO_APP_ID"`
-	ReactAppYoutubeKey       string `yaml:"react_app_youtube_key" json:"REACT_APP_YOUTUBE_KEY" envconfig:"REACT_APP_YOUTUBE_KEY"`
+	ReactAppYoutubeKey       string `yaml:"react_app_youtube_key" json:"YOUTUBE_KEY" envconfig:"REACT_APP_YOUTUBE_KEY"`
 }
 
 func (c *UIClient) Init() {
