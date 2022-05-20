@@ -1,6 +1,8 @@
 package net
 
 import (
+	"encoding/json"
+	"fmt"
 	// Std
 	"net/http"
 	"net/url"
@@ -8,6 +10,7 @@ import (
 
 	// Momentum
 	"github.com/momentum-xyz/controller/internal/auth"
+	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/message"
 	"github.com/momentum-xyz/controller/internal/socket"
@@ -20,6 +23,7 @@ import (
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 )
 
 type SuccessfulHandshakeData struct {
@@ -36,27 +40,69 @@ var upgrader = websocket.Upgrader{
 }
 
 type Networking struct {
-	introspectUrl string
 	HandshakeChan chan *SuccessfulHandshakeData
+	cfg           *config.Config
 }
 
 var log = logger.L()
 
-func NewNetworking(introspectURL string) *Networking {
+func NewNetworking(cfg *config.Config) *Networking {
 	n := &Networking{
-		introspectUrl: introspectURL,
 		HandshakeChan: make(chan *SuccessfulHandshakeData, 20),
+		cfg:           cfg,
 	}
 
 	go utils.ChanMonitor("HS chan", n.HandshakeChan, 3*time.Second)
 
 	http.HandleFunc("/posbus", n.HandShake)
+	http.HandleFunc("/config/ui-client", n.cfgUIClient)
 	return n
 }
 
 func (n *Networking) ListenAndServe(address, port string) error {
-	log.Info(address + ":" + port)
+	log.Info("ListenAndServe: ", address+":"+port)
 	return http.ListenAndServe(address+":"+port, nil)
+}
+
+func (n *Networking) cfgUIClient(w http.ResponseWriter, r *http.Request) {
+	log.Info("Serving UI Client CFG")
+
+	c := n.cfg.UIClient
+
+	cfg := map[string]string{
+		"UNITY_CLIENT_URL":             c.FrontendURL + "/unity",
+		"RENDER_SERVICE_URL":           c.FrontendURL + "/api/v3/render",
+		"BACKEND_ENDPOINT_URL":         c.FrontendURL + "/api/v3/backend",
+		"KEYCLOAK_OPENID_CONNECT_URL":  c.KeycloakOpenIDConnectURL,
+		"KEYCLOAK_OPENID_CLIENT_ID":    c.KeycloakOpenIDClientID,
+		"KEYCLOAK_OPENID_SCOPE":        c.KeycloakOpenIDScope,
+		"HYDRA_OPENID_CONNECT_URL":     c.HydraOpenIDConnectURL,
+		"HYDRA_OPENID_CLIENT_ID":       c.HydraOpenIDClientID,
+		"HYDRA_OPENID_GUEST_CLIENT_ID": c.HydraOpenIDGuestClientID,
+		"HYDRA_OPENID_SCOPE":           c.HydraOpenIDScope,
+		"WEB3_IDENTITY_PROVIDER_URL":   c.Web3IdentityProviderURL,
+		"GUEST_IDENTITY_PROVIDER_URL":  c.GuestIdentityProviderURL,
+		"SENTRY_DSN":                   c.SentryDSN,
+		"AGORA_APP_ID":                 c.AgoraAppID,
+		"AUTH_SERVICE_URL":             c.AuthServiceURL,
+		"GOOGLE_API_CLIENT_ID":         c.GoogleAPIClientID,
+		"GOOGLE_API_DEVELOPER_KEY":     c.GoogleAPIDeveloperKey,
+		"MIRO_APP_ID":                  c.MiroAppID,
+		"REACT_APP_YOUTUBE_KEY":        c.ReactAppYoutubeKey,
+	}
+
+	data, err := json.Marshal(&cfg)
+	if err != nil {
+		err := errors.WithMessage(err, "failed to serve ui client cfg")
+		log.Error(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("{\"error\": %+v}", err)))
+		return
+	}
+
+	if _, err := w.Write(data); err != nil {
+		log.Error(errors.WithMessage(err, "failed to serve ui client cfg"))
+	}
 }
 
 func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +180,7 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 
 	token := string(handshake.UserToken())
 
-	if !auth.VerifyToken(token, n.introspectUrl) {
+	if !auth.VerifyToken(token, n.cfg.Common.IntrospectURL) {
 		log.Error("error: wrong PreHandShake (invalid token), aborting connection")
 		return nil, nil, false, nil
 	}

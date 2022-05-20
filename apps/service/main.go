@@ -40,7 +40,7 @@ func run() error {
 	logger.SetLevel(zapcore.Level(cfg.Settings.LogLevel))
 	defer logger.Close()
 
-	networking := net.NewNetworking(cfg.Common.IntrospectURL)
+	networking := net.NewNetworking(cfg)
 	msgBuilder := message.InitBuilder(20, 1024*32)
 	hub := universe.NewControllerHub(cfg, networking, msgBuilder)
 

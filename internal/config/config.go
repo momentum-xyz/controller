@@ -17,17 +17,19 @@ import (
 
 // Config : structure to hold configuration
 type Config struct {
-	MQTT     MQTT   `yaml:"mqtt"`
-	MySQL    MySQL  `yaml:"mysql"`
-	Influx   Influx `yaml:"influx"`
-	Settings Local  `yaml:"settings"`
-	Common   Common `yaml:"common"`
+	MQTT     MQTT     `yaml:"mqtt"`
+	MySQL    MySQL    `yaml:"mysql"`
+	Influx   Influx   `yaml:"influx"`
+	UIClient UIClient `yaml:"ui_client"`
+	Settings Local    `yaml:"settings"`
+	Common   Common   `yaml:"common"`
 }
 
 func (x *Config) Init() {
 	x.MQTT.Init()
 	x.MySQL.Init()
 	x.Settings.Init()
+	x.UIClient.Init()
 	x.Influx.Init()
 	x.Common.Init()
 }
