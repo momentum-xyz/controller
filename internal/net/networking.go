@@ -67,28 +67,16 @@ func (n *Networking) ListenAndServe(address, port string) error {
 func (n *Networking) cfgUIClient(w http.ResponseWriter, r *http.Request) {
 	log.Info("Serving UI Client CFG")
 
-	c := n.cfg.UIClient
-
-	cfg := map[string]string{
-		"UNITY_CLIENT_URL":             c.FrontendURL + "/unity",
-		"RENDER_SERVICE_URL":           c.FrontendURL + "/api/v3/render",
-		"BACKEND_ENDPOINT_URL":         c.FrontendURL + "/api/v3/backend",
-		"KEYCLOAK_OPENID_CONNECT_URL":  c.KeycloakOpenIDConnectURL,
-		"KEYCLOAK_OPENID_CLIENT_ID":    c.KeycloakOpenIDClientID,
-		"KEYCLOAK_OPENID_SCOPE":        c.KeycloakOpenIDScope,
-		"HYDRA_OPENID_CONNECT_URL":     c.HydraOpenIDConnectURL,
-		"HYDRA_OPENID_CLIENT_ID":       c.HydraOpenIDClientID,
-		"HYDRA_OPENID_GUEST_CLIENT_ID": c.HydraOpenIDGuestClientID,
-		"HYDRA_OPENID_SCOPE":           c.HydraOpenIDScope,
-		"WEB3_IDENTITY_PROVIDER_URL":   c.Web3IdentityProviderURL,
-		"GUEST_IDENTITY_PROVIDER_URL":  c.GuestIdentityProviderURL,
-		"SENTRY_DSN":                   c.SentryDSN,
-		"AGORA_APP_ID":                 c.AgoraAppID,
-		"AUTH_SERVICE_URL":             c.AuthServiceURL,
-		"GOOGLE_API_CLIENT_ID":         c.GoogleAPIClientID,
-		"GOOGLE_API_DEVELOPER_KEY":     c.GoogleAPIDeveloperKey,
-		"MIRO_APP_ID":                  c.MiroAppID,
-		"REACT_APP_YOUTUBE_KEY":        c.ReactAppYoutubeKey,
+	cfg := struct {
+		config.UIClient
+		UnityClientURL     string `json:"UNITY_CLIENT_URL"`
+		RenderServiceURL   string `json:"RENDER_SERVICE_URL"`
+		BackendEndpointURL string `json:"BACKEND_ENDPOINT_URL"`
+	}{
+		UIClient:           n.cfg.UIClient,
+		UnityClientURL:     n.cfg.UIClient.FrontendURL + "/unity",
+		RenderServiceURL:   n.cfg.UIClient.FrontendURL + "/api/v3/render",
+		BackendEndpointURL: n.cfg.UIClient.FrontendURL + "/api/v3/backend",
 	}
 
 	data, err := json.Marshal(&cfg)
