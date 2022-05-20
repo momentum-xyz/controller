@@ -58,7 +58,7 @@ func NewNetworking(cfg *config.Config) *Networking {
 	http.HandleFunc("/config/ui-client", n.cfgUIClient)
 	return n
 }
-x
+
 func (n *Networking) ListenAndServe(address, port string) error {
 	log.Info("ListenAndServe: ", address+":"+port)
 	return http.ListenAndServe(address+":"+port, nil)
