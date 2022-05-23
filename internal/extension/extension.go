@@ -4,8 +4,8 @@ import (
 	// Momentum
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/config"
-	"github.com/momentum-xyz/controller/internal/message"
 	"github.com/momentum-xyz/controller/internal/storage"
+	"github.com/momentum-xyz/controller/pkg/message"
 
 	// Third-party
 	mqtt "github.com/eclipse/paho.mqtt.golang"
