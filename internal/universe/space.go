@@ -115,13 +115,15 @@ func (s *Space) handleStageMsg(msg []byte) error {
 	if err := json.Unmarshal(msg, &data); err != nil {
 		return err
 	}
-	if _, ok := data["action"]; !ok {
+
+	if val, ok := data["action"]; !ok || val != "state" {
 		return nil
 	}
 	v, ok := data["value"]
 	if !ok {
 		return nil
 	}
+
 	sv, ok := v.(string)
 	if !ok {
 		return fmt.Errorf("invalid value type: %T", v)
