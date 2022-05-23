@@ -3,6 +3,7 @@ package universe
 import (
 	// STD
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -22,6 +23,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -59,6 +61,7 @@ type Space struct {
 	initialized      bool
 	msgBuilder       *message.Builder
 	stringAttributes map[string]string
+	isStageMode      int32
 }
 
 func newSpace(spaceStorage space.Storage, msgBuilder *message.Builder) *Space {
@@ -92,6 +95,11 @@ func (s *Space) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 		if len(subtopics) > 1 {
 			module = subtopics[1]
 		}
+		if module == "stage" {
+			if err := s.handleStageMsg(msg.Payload()); err != nil {
+				log.Warn(errors.WithMessage(err, "failed to handle stage msg"))
+			}
+		}
 		s.SendToUsersOnSpace(
 			posbus.NewRelayToReactMsg(
 				module, msg.Payload(),
@@ -100,6 +108,38 @@ func (s *Space) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 	case "trigger-effect":
 		s.MQTTEffectsHandler(msg.Payload())
 	}
+}
+
+func (s *Space) handleStageMsg(msg []byte) error {
+	var data map[string]interface{}
+	if err := json.Unmarshal(msg, &data); err != nil {
+		return err
+	}
+
+	if val, ok := data["action"]; !ok || val != "state" {
+		return nil
+	}
+	v, ok := data["value"]
+	if !ok {
+		return nil
+	}
+
+	sv, ok := v.(string)
+	if !ok {
+		return fmt.Errorf("invalid value type: %T", v)
+	}
+	val, err := strconv.ParseInt(sv, 10, 32)
+	if err != nil {
+		return fmt.Errorf("invalid value: %s", sv)
+	}
+
+	s.isStageMode = int32(val)
+	attrs := map[string]int32{
+		"stagemode": s.isStageMode,
+	}
+
+	s.world.Broadcast(s.msgBuilder.SetObjectAttributes(s.id, attrs))
+	return nil
 }
 
 func (s *Space) MQTTEffectsHandler(msg []byte) {
@@ -244,6 +284,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 
 	intAttributes := make(map[string]int32)
 	intAttributes["private"] = int32(entry["secret"].(int64))
+	intAttributes["stagemode"] = s.isStageMode
 
 	stringAttributes := make(map[string]string)
 
