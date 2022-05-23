@@ -103,20 +103,28 @@ func (ch *ControllerHub) RemoveGuestsWithDelay() {
 }
 
 func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) {
-	usersForRemoveWithDelay.Mu.Lock()
-	defer usersForRemoveWithDelay.Mu.Unlock()
-
-	cancel, ok := usersForRemoveWithDelay.Data[id]
+	cancel, ok := usersForRemoveWithDelay.Load(id)
 	if ok {
 		cancel()
 	}
 
 	var ctx context.Context
 	ctx, cancel = context.WithCancel(context.Background())
-	usersForRemoveWithDelay.Data[id] = cancel
+	usersForRemoveWithDelay.Store(id, cancel)
 
 	go func() {
-		defer usersForRemoveWithDelay.Remove(id)
+		defer func() {
+			usersForRemoveWithDelay.Mu.Lock()
+			defer usersForRemoveWithDelay.Mu.Unlock()
+
+			fn, ok := usersForRemoveWithDelay.Data[id]
+			if !ok {
+				return
+			}
+			if fn == cancel {
+				delete(usersForRemoveWithDelay.Data, id)
+			}
+		}()
 
 		dt := time.NewTimer(delay)
 		select {
