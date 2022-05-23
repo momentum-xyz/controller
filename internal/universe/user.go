@@ -7,8 +7,8 @@ import (
 	"unsafe"
 
 	"github.com/momentum-xyz/controller/internal/cmath"
-	"github.com/momentum-xyz/controller/internal/message"
 	"github.com/momentum-xyz/controller/internal/socket"
+	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 
@@ -229,10 +229,10 @@ func (u *User) UpdatePosition(data []byte) {
 	u.world.users.positionLock.RUnlock()
 	// logger.Logln(4, "Updated pos:", u.pos, *data)
 	currentTime := time.Now().Unix()
-	//if (currentTime - u.lastUpdate) > 5 {
+	// if (currentTime - u.lastUpdate) > 5 {
 	// u.world.hub.mqtt.SafePublish("activity/user/posbus", 0, false, []byte(u.ID.String()))
 	u.lastUpdate = currentTime
-	//}
+	// }
 }
 
 func (u *User) Send(m *websocket.PreparedMessage) {

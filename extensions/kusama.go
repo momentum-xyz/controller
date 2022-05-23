@@ -12,14 +12,17 @@ import (
 	"sync/atomic"
 	"time"
 
-	mqtt "github.com/eclipse/paho.mqtt.golang"
-	"github.com/google/uuid"
+	// Momentum
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
-	"github.com/momentum-xyz/controller/internal/message"
+	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
+
+	// Third-Party
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 	"go.etcd.io/bbolt"
 )
 

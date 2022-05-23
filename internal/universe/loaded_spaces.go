@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/momentum-xyz/controller/internal/cmath"
-	"github.com/momentum-xyz/controller/internal/message"
 	"github.com/momentum-xyz/controller/internal/space"
+	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	"github.com/google/uuid"

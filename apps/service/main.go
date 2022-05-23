@@ -10,9 +10,9 @@ import (
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
-	"github.com/momentum-xyz/controller/internal/message"
 	"github.com/momentum-xyz/controller/internal/net"
 	"github.com/momentum-xyz/controller/internal/universe"
+	"github.com/momentum-xyz/controller/pkg/message"
 
 	// Third-Party
 	"github.com/pkg/errors"

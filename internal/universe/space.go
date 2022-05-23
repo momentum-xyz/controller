@@ -9,11 +9,11 @@ import (
 
 	// Momentum
 	"github.com/momentum-xyz/controller/internal/cmath"
-	"github.com/momentum-xyz/controller/internal/message"
 	"github.com/momentum-xyz/controller/internal/position"
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/controller/internal/spacetype"
+	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 	pputils "github.com/momentum-xyz/posbus-protocol/utils"
@@ -112,7 +112,7 @@ func (s *Space) MQTTEffectsHandler(msg []byte) {
 	}
 }
 
-//func (s *Space) SendToListOfUsersOnSpace(msg *websocket.PreparedMessage, users []uuid.UUID) {
+// func (s *Space) SendToListOfUsersOnSpace(msg *websocket.PreparedMessage, users []uuid.UUID) {
 //	s.world.userMutex.RLock()
 //	defer s.world.userMutex.RUnlock()
 //	isWorld := s.id == s.world.ID
@@ -122,7 +122,7 @@ func (s *Space) MQTTEffectsHandler(msg []byte) {
 //			u.connection.send <- msg
 //		}
 //	}
-//}
+// }
 
 func (s *Space) SendToUsersOnSpace(msg *websocket.PreparedMessage) {
 	if s.id == s.world.ID {
@@ -302,7 +302,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	//	}
 	// }
 
-	//if s.initialized {
+	// if s.initialized {
 	if isdefchanged {
 		s.world.spawnNeedUpdate = true
 		log.Debug("send addStaticOBject")
@@ -324,7 +324,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 		log.Debug("send setObjectStrings")
 		s.world.Broadcast(s.msgBuilder.SetObjectStrings(s.id, updatedStringAttributes))
 	}
-	//}
+	// }
 	// hash := md5.Sum(sentry)
 	// logger.Logln(1, "meta:", s.id, time.Since(tm))
 	return nil

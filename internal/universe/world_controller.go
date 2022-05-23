@@ -17,9 +17,9 @@ import (
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/extension"
-	"github.com/momentum-xyz/controller/internal/message"
 	"github.com/momentum-xyz/controller/internal/spacetype"
 	"github.com/momentum-xyz/controller/internal/storage"
+	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 
 	// Third-party
@@ -479,7 +479,7 @@ func (wc *WorldController) SetSpaceTitle(spaceId uuid.UUID, title string) {
 }
 
 // TODO: temporary, to move later
-//func GetNameHash(name, url string) (string, error) {
+// func GetNameHash(name, url string) (string, error) {
 //	nameToRender := strings.ReplaceAll(nameTemplate, "%NAME%", name)
 //	r := strings.NewReader(nameToRender)
 //	resp, err := http.Post(url, "`application/json", r)
@@ -501,7 +501,7 @@ func (wc *WorldController) SetSpaceTitle(spaceId uuid.UUID, title string) {
 //	}
 //
 //	return "", errors.New("wrong")
-//}
+// }
 
 // Make sure that WorldController is extension.WorldController - DO NOT REMOVE
 var _ extension.WorldController = (*WorldController)(nil)
