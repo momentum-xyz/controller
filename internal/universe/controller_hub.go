@@ -2,7 +2,6 @@ package universe
 
 import (
 	"context"
-	"errors"
 	"net/url"
 	"time"
 
@@ -18,20 +17,25 @@ import (
 	"github.com/momentum-xyz/controller/internal/storage"
 	"github.com/momentum-xyz/controller/internal/user"
 	"github.com/momentum-xyz/controller/internal/world"
+	"github.com/momentum-xyz/controller/utils"
 
-	// External
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	influx_db2 "github.com/influxdata/influxdb-client-go/v2"
+	// External
+	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
 	// influx_api "github.com/influxdata/influxdb-client-go/v2/api"
 	influx_write "github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 const (
-	selectNodeSettingsIdAndName = `select ns1.value as id, ns2.value as name from node_settings ns1
+	defaultDelayForUsersForRemove = 5 * time.Minute
+	selectNodeSettingsIdAndName   = `select ns1.value as id, ns2.value as name from node_settings ns1
 											 join node_settings ns2	where ns1.name = 'id' and ns2.name = 'name';`
 )
+
+var usersForRemoveWithDelay = utils.NewSyncMap[uuid.UUID, context.CancelFunc]()
 
 var log = logger.L()
 
@@ -77,6 +81,7 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	// hub.influx = client.WriteAPIBlocking(hub.cfg.Influx.ORG, hub.cfg.Influx.BUCKET)
 
 	hub.GetNodeSettings()
+	hub.RemoveGuestsWithDelay()
 
 	for _, WorldID := range hub.WorldStorage.GetWorlds() {
 		hub.AddWorldController(WorldID)
@@ -84,6 +89,42 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	hub.mqtt.SafeSubscribe("updates/spaces/changed", 1, hub.ChangeHandler)
 
 	return hub
+}
+
+func (ch *ControllerHub) RemoveGuestsWithDelay() {
+	guests, err := ch.DB.GetUsersIDsByType(ch.guestUserTypeId)
+	if err != nil {
+		log.Error(errors.WithMessage(errors.WithMessage(err, "failed to get guests"), "failed to remove guests"))
+		return
+	}
+	for i := range guests {
+		ch.RemoveUserWithDelay(guests[i], defaultDelayForUsersForRemove)
+	}
+}
+
+func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) {
+	usersForRemoveWithDelay.Mu.Lock()
+	defer usersForRemoveWithDelay.Mu.Unlock()
+
+	cancel, ok := usersForRemoveWithDelay.Data[id]
+	if ok {
+		cancel()
+	}
+
+	var ctx context.Context
+	ctx, cancel = context.WithCancel(context.Background())
+	usersForRemoveWithDelay.Data[id] = cancel
+
+	go func() {
+		dt := time.NewTimer(delay)
+		select {
+		case <-dt.C:
+			ch.DB.RemoveFromUsers(id)
+			log.Debug("RemoveUserWithDelay: user removed: %s", id.String())
+		case <-ctx.Done():
+			dt.Stop()
+		}
+	}()
 }
 
 func (ch *ControllerHub) ChangeHandler(client mqtt.Client, message mqtt.Message) {

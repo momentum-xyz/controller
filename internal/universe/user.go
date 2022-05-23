@@ -87,6 +87,10 @@ func (u *User) Register(wc *WorldController) {
 	log.Info("send initial world")
 	u.world.AddUserToWorld(u) // AddToWorld is happening there
 	wc.hub.mqtt.SafeSubscribe("user_control/"+wc.ID.String()+"/"+u.ID.String()+"/#", 1, u.MQTTMessageHandler)
+	// remove user from delay remove list
+	if cancel, ok := usersForRemoveWithDelay.Load(u.ID); ok {
+		cancel()
+	}
 	log.Warnf("Registration done for %s(%s) : guest=%+v ", u.name, u.ID.String(), u.isGuest)
 	go func() {
 		time.Sleep(15 * time.Second)
@@ -154,7 +158,7 @@ func (u *User) UserOfflineAction() {
 	}
 	u.world.hub.DB.RemoveDynamicWorldMembership(u.ID, u.world.ID)
 	if u.isGuest {
-		u.world.hub.DB.RemoveFromUsers(u.ID)
+		u.world.hub.RemoveUserWithDelay(u.ID, defaultDelayForUsersForRemove)
 	}
 }
 

@@ -2,7 +2,6 @@ package storage
 
 import (
 	"encoding/json"
-	"errors"
 	"net/url"
 	"strings"
 	"time"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -287,6 +287,28 @@ func (DB *Database) GetGuestUserTypeId(typename string) uuid.UUID {
 	return tid
 }
 
+func (DB *Database) GetUsersIDsByType(typeid uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := DB.Query(`SELECT id FROM users WHERE userTypeId = ?;`, utils.BinId(typeid))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	bid := make([]byte, 16)
+	var ids []uuid.UUID
+	for rows.Next() {
+		if err := rows.Scan(&bid); err != nil {
+			return nil, err
+		}
+		id, err := uuid.FromBytes(bid)
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 func (DB *Database) QuerySingleByField(table string, field string, ref interface{}) (map[string]interface{}, error) {
 	querybase := `SELECT * FROM ` + table + ` WHERE  ` + field + ` = ?;`
 	rows, err := DB.Query(querybase, ref)
@@ -384,6 +406,27 @@ func (DB *Database) RemoveFromUsers(userId uuid.UUID) {
 	}
 
 	log.Debug("Storage: RemoveFromUsers:", userId.String(), affected)
+}
+
+func (DB *Database) RemoveManyFromUsers(ids []uuid.UUID) error {
+	var bids [][]byte
+	for i := range ids {
+		bids = append(bids, utils.BinId(ids[i]))
+	}
+
+	res, err := DB.Exec(`DELETE FROM users WHERE id IN(?);`, bids)
+	if err != nil {
+		return err
+	}
+
+	var affected int64
+	affected, err = res.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	log.Debug("Storage: RemoveManyFromUsers: ", affected)
+	return nil
 }
 
 func (DB *Database) InsertOnline(userId, spaceId uuid.UUID) {
