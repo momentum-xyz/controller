@@ -120,6 +120,7 @@ func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) 
 		select {
 		case <-dt.C:
 			ch.DB.RemoveFromUsers(id)
+			usersForRemoveWithDelay.Remove(id)
 			log.Debug("RemoveUserWithDelay: user removed: %s", id.String())
 		case <-ctx.Done():
 			dt.Stop()
