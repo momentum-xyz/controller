@@ -17,9 +17,30 @@ import (
 )
 
 const (
-	removeOnlineUserByIdAndSpaceIdQuery             = `delete from online_users where userId = ? and spaceId = ?;`
+	getUserNameQuery                                = `SELECT name FROM users WHERE id = ?`
+	queryWorldConfigQuery                           = `SELECT config FROM world_definition WHERE id = ?`
+	getUserInfoQuery                                = `SELECT name, userTypeId FROM users WHERE id = ?;`
+	getRandomWorldQuery                             = `SELECT id FROM spaces WHERE parentId = 0x00000000000000000000000000000000 AND id != 0x00000000000000000000000000000000;`
+	getDefaultEntranceWorldQuery                    = `SELECT value FROM node_settings WHERE name = 'EntranceWorld';`
+	getWorldByURLQuery                              = `SELECT worldId FROM url_mapping WHERE URL = ?;`
+	getParentWorldQuery                             = `SELECT GetParentWorldByID(id) FROM spaces WHERE  id = ?;`
+	getastUserWorldQuery                            = `SELECT worldId FROM user_lkp WHERE userId = ? ORDER BY updated_at DESC;`
+	isSpacePresentQuery                             = `SELECT id FROM spaces WHERE id = ? LIMIT 1;`
+	removeOnlineUserByIdAndSpaceIdQuery             = `DELETE FROM online_users WHERE userId = ? AND spaceId = ?;`
 	insertOnlineUserByIdAndSpaceIdQuery             = `INSERT INTO online_users (userId,spaceId,updated_at) VALUES (?,?,NOW()) ON DUPLICATE KEY UPDATE updated_at=NOW();`
-	removeDynamicWorldMembershipByIdAndWorldIdQuery = `delete from user_spaces_dynamic where userId = ? and spaceId = ?;`
+	removeDynamicWorldMembershipByIdAndWorldIdQuery = `DELETE FROM user_spaces_dynamic WHERE userId = ? AND spaceId = ?;`
+	removeFromUsersQuery                            = `DELETE FROM users WHERE id = ?;`
+	removeManyFromUsersQuery                        = `DELETE FROM users WHERE id IN(?);`
+	getUserLastKnownPositionQuery                   = `SELECT spaceId,x,y,z FROM user_lkp WHERE  userId = ? AND worldId = ?;`
+	getWorldDefaultSpawnPositionQuery               = `SELECT SpawnSpace,SpawnDislocation FROM world_definition WHERE id = ?;`
+	getGuestUserTypeIDQuery                         = `SELECT id FROM user_types WHERE name = ?;`
+	getUserIDsByTypeQuery                           = `SELECT id FROM users WHERE userTypeId = ?;`
+	updateHighFivesQuery                            = `INSERT INTO high_fives (senderId,receiverId,created_at,updated_at,cnt) VALUES (?,?,NOW(),NOW(),1)
+														ON DUPLICATE KEY UPDATE cnt = cnt+1, updated_at = NOW();`
+	writeLastKnownPositionQuery = `INSERT INTO user_lkp (userId,worldId,spaceId,x,y,z,created_at,updated_at) 
+														VALUES (?,?,?,?,?,?,NOW(),?) 
+														ON DUPLICATE KEY UPDATE 
+														worldId = ?, spaceId = ?, x = ?, y = ?, z = ?, updated_at = ?;`
 )
 
 const (
@@ -45,7 +66,7 @@ func OpenDB(cfg *config.MySQL) *Database {
 
 func (DB *Database) GetParentWorld(sid uuid.UUID) (uuid.UUID, error) {
 	bid := make([]byte, 16)
-	query := `SELECT GetParentWorldByID(id) FROM spaces WHERE  id = ?;`
+	query := getParentWorldQuery
 
 	rows, err := DB.Query(query, utils.BinId(sid))
 
@@ -66,7 +87,7 @@ func (DB *Database) GetParentWorld(sid uuid.UUID) (uuid.UUID, error) {
 }
 
 func (DB *Database) isSpacePresent(id uuid.UUID) bool {
-	query := `SELECT id FROM spaces WHERE id = ? LIMIT 1`
+	query := isSpacePresentQuery
 	rows1a, err := DB.Query(query, utils.BinId(id))
 	//noinspection GoUnhandledErrorResult
 	defer rows1a.Close()
@@ -75,7 +96,7 @@ func (DB *Database) isSpacePresent(id uuid.UUID) bool {
 }
 
 func (DB *Database) GetWorldByURL(URL *url.URL) (uuid.UUID, bool) {
-	query := `SELECT worldId FROM url_mapping WHERE URL = ?;`
+	query := getWorldByURLQuery
 	domain := URL.String()
 	log.Info("Quering domain:", domain)
 	rows, err := DB.Query(query, domain)
@@ -106,7 +127,7 @@ func (DB *Database) GetWorldByURL(URL *url.URL) (uuid.UUID, bool) {
 }
 
 func (DB *Database) GetastUserWorld(uid uuid.UUID) (uuid.UUID, bool) {
-	query := `SELECT worldId FROM user_lkp WHERE userId = ? order by updated_at desc;`
+	query := getastUserWorldQuery
 	rows, err := DB.Query(query, utils.BinId(uid))
 	if err == nil {
 		//noinspection GoUnhandledErrorResult
@@ -127,7 +148,7 @@ func (DB *Database) GetastUserWorld(uid uuid.UUID) (uuid.UUID, bool) {
 }
 
 func (DB *Database) GetDefaultEntranceWorld() (uuid.UUID, bool) {
-	rows1, err := DB.Query(`SELECT value FROM node_settings where name = 'EntranceWorld' ;`)
+	rows1, err := DB.Query(getDefaultEntranceWorldQuery)
 	if err == nil {
 		//noinspection GoUnhandledErrorResult
 		defer rows1.Close()
@@ -147,7 +168,7 @@ func (DB *Database) GetDefaultEntranceWorld() (uuid.UUID, bool) {
 }
 
 func (DB *Database) GetRandomWorld() (uuid.UUID, bool) {
-	rows2, err := DB.Query("SELECT id FROM spaces where parentId = 0x00000000000000000000000000000000 and id != 0x00000000000000000000000000000000;")
+	rows2, err := DB.Query(getRandomWorldQuery)
 	if err == nil {
 		//noinspection GoUnhandledErrorResult
 		defer rows2.Close()
@@ -167,10 +188,7 @@ func (DB *Database) GetRandomWorld() (uuid.UUID, bool) {
 }
 
 func (DB *Database) GetUserLastKnownPosition(UserId, WorldId uuid.UUID) (uuid.UUID, cmath.Vec3, bool) {
-	rows, err := DB.Query(
-		`SELECT spaceId,x,y,z FROM user_lkp WHERE  userId = ? and worldId =?;`, utils.BinId(UserId),
-		utils.BinId(WorldId),
-	)
+	rows, err := DB.Query(getUserLastKnownPositionQuery, utils.BinId(UserId), utils.BinId(WorldId))
 	if err == nil {
 		//noinspection GoUnhandledErrorResult
 		defer rows.Close()
@@ -194,7 +212,7 @@ func (DB *Database) GetUserLastKnownPosition(UserId, WorldId uuid.UUID) (uuid.UU
 }
 
 func (DB *Database) GetWorldDefauleSpawnPositon(WorldId uuid.UUID) (uuid.UUID, cmath.Vec3, bool) {
-	rows3, err := DB.Query(`SELECT SpawnSpace,SpawnDislocation FROM world_definition where id=?;`, utils.BinId(WorldId))
+	rows3, err := DB.Query(getWorldDefaultSpawnPositionQuery, utils.BinId(WorldId))
 	if err == nil {
 		//noinspection GoUnhandledErrorResult
 		defer rows3.Close()
@@ -257,7 +275,7 @@ func (DB *Database) GetUserSpawnPosition(uid uuid.UUID, URL *url.URL) (uuid.UUID
 }
 
 func (DB *Database) GetUserInfo(id uuid.UUID) (string, uuid.UUID) {
-	query := `SELECT name, userTypeId from users where id =?;`
+	query := getUserInfoQuery
 	row := DB.QueryRow(query, utils.BinId(id))
 	var name string
 	bid := make([]byte, 16)
@@ -273,7 +291,7 @@ func (DB *Database) GetUserInfo(id uuid.UUID) (string, uuid.UUID) {
 }
 
 func (DB *Database) GetGuestUserTypeId(typename string) uuid.UUID {
-	query := `select id from user_types where name = ?;`
+	query := getGuestUserTypeIDQuery
 	row := DB.QueryRow(query, typename)
 	bid := make([]byte, 16)
 	err := row.Scan(&bid)
@@ -288,7 +306,7 @@ func (DB *Database) GetGuestUserTypeId(typename string) uuid.UUID {
 }
 
 func (DB *Database) GetUsersIDsByType(typeid uuid.UUID) ([]uuid.UUID, error) {
-	rows, err := DB.Query(`SELECT id FROM users WHERE userTypeId = ?;`, utils.BinId(typeid))
+	rows, err := DB.Query(getUserIDsByTypeQuery, utils.BinId(typeid))
 	if err != nil {
 		return nil, err
 	}
@@ -359,11 +377,7 @@ func (DB *Database) QuerySingleByUUID(table string, id uuid.UUID) (map[string]in
 func (DB *Database) WriteLastKnownPosition(
 	userId, worldId, anchorId uuid.UUID, vector *cmath.Vec3, timeOffset time.Duration,
 ) {
-	querybase := `INSERT INTO user_lkp (userId,worldId,spaceId,x,y,z,created_at,updated_at) 
-	VALUES (?,?,?,?,?,?,NOW(),?) 
-	ON DUPLICATE KEY UPDATE 
-	worldId=?,spaceId=?,x=?, y=?, z=?, updated_at=?;
-	`
+	querybase := writeLastKnownPositionQuery
 
 	tm := time.Now().Add(time.Second * timeOffset)
 	_, err := DB.Exec(
@@ -394,7 +408,7 @@ func (DB *Database) RemoveOnline(userId, worldId uuid.UUID) {
 }
 
 func (DB *Database) RemoveFromUsers(userId uuid.UUID) {
-	res, err := DB.Exec(`delete from users where id = ?;`, utils.BinId(userId))
+	res, err := DB.Exec(removeFromUsersQuery, utils.BinId(userId))
 	if err != nil {
 		log.Warnf("error: %+v", err)
 	}
@@ -414,7 +428,7 @@ func (DB *Database) RemoveManyFromUsers(ids []uuid.UUID) error {
 		bids = append(bids, utils.BinId(ids[i]))
 	}
 
-	res, err := DB.Exec(`DELETE FROM users WHERE id IN(?);`, bids)
+	res, err := DB.Exec(removeManyFromUsersQuery, bids)
 	if err != nil {
 		return err
 	}
@@ -452,7 +466,7 @@ func (DB *Database) RemoveDynamicWorldMembership(userId, worldId uuid.UUID) {
 }
 
 func (DB *Database) QueryWorldConfig(id uuid.UUID) (map[string]interface{}, error) {
-	rows, err := DB.Query(`select config from world_definition where id=?`, utils.BinId(id))
+	rows, err := DB.Query(queryWorldConfigQuery, utils.BinId(id))
 	if err != nil {
 		log.Error(err)
 		return nil, err
@@ -476,18 +490,14 @@ func (DB *Database) QueryWorldConfig(id uuid.UUID) (map[string]interface{}, erro
 }
 
 func (DB *Database) UpdateHighFives(sender, target uuid.UUID) {
-	_, err := DB.Exec(
-		`INSERT INTO high_fives (senderId,receiverId,created_at,updated_at,cnt) VALUES (?,?,NOW(),NOW(),1)
-						ON DUPLICATE KEY UPDATE cnt=cnt+1,updated_at=NOW()`,
-		utils.BinId(sender), utils.BinId(target),
-	)
+	_, err := DB.Exec(updateHighFivesQuery, utils.BinId(sender), utils.BinId(target))
 	if err != nil {
 		log.Warnf("error: %+v", err)
 	}
 }
 
 func (DB *Database) GetUserName(id uuid.UUID) string {
-	row := DB.QueryRow(`SELECT name FROM users WHERE id = ?`, utils.BinId(id))
+	row := DB.QueryRow(getUserNameQuery, utils.BinId(id))
 	var name string
 	err := row.Scan(&name)
 	if err != nil {
