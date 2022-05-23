@@ -8,9 +8,9 @@ import (
 	// Momentum
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/logger"
-	"github.com/momentum-xyz/controller/internal/posbus"
 	"github.com/momentum-xyz/controller/utils"
-	"github.com/momentum-xyz/posbus-schema/go/api"
+	"github.com/momentum-xyz/posbus-protocol/flatbuff/go/api"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	// Third-Party
 	flatbuffers "github.com/google/flatbuffers/go"
@@ -85,6 +85,7 @@ func InitBuilder(count int, size int) *Builder {
 	}
 	return msgBuilder
 }
+
 func (mb *Builder) GetBuilder() *flatbuffers.Builder {
 	builder := <-mb.builders
 	return builder

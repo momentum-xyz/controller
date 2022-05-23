@@ -1,6 +1,8 @@
 package net
 
 import (
+	"encoding/json"
+	"fmt"
 	// Std
 	"net/http"
 	"net/url"
@@ -8,18 +10,20 @@ import (
 
 	// Momentum
 	"github.com/momentum-xyz/controller/internal/auth"
+	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/message"
-	"github.com/momentum-xyz/controller/internal/posbus"
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/utils"
-	"github.com/momentum-xyz/posbus-schema/go/api"
+	"github.com/momentum-xyz/posbus-protocol/flatbuff/go/api"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	// Third-Party
 	"github.com/dgrijalva/jwt-go"
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 )
 
 type SuccessfulHandshakeData struct {
@@ -36,27 +40,66 @@ var upgrader = websocket.Upgrader{
 }
 
 type Networking struct {
-	introspectUrl string
 	HandshakeChan chan *SuccessfulHandshakeData
+	cfg           *config.Config
 }
 
 var log = logger.L()
 
-func NewNetworking(introspectURL string) *Networking {
+func NewNetworking(cfg *config.Config) *Networking {
 	n := &Networking{
-		introspectUrl: introspectURL,
 		HandshakeChan: make(chan *SuccessfulHandshakeData, 20),
+		cfg:           cfg,
 	}
 
 	go utils.ChanMonitor("HS chan", n.HandshakeChan, 3*time.Second)
 
 	http.HandleFunc("/posbus", n.HandShake)
+	http.HandleFunc("/config/ui-client", n.cfgUIClient)
 	return n
 }
 
 func (n *Networking) ListenAndServe(address, port string) error {
-	log.Info(address + ":" + port)
+	log.Info("ListenAndServe: ", address+":"+port)
 	return http.ListenAndServe(address+":"+port, nil)
+}
+
+func (n *Networking) cfgUIClient(w http.ResponseWriter, r *http.Request) {
+	log.Info("Serving UI Client CFG")
+
+	unityClientURL := n.cfg.UIClient.FrontendURL + "/unity"
+	cfg := struct {
+		config.UIClient
+		UnityClientURL          string `json:"UNITY_CLIENT_URL"`
+		UnityClientLoaderURL    string `json:"UNITY_CLIENT_LOADER_URL"`
+		UnityClientDataURL      string `json:"UNITY_CLIENT_DATA_URL"`
+		UnityClientFrameworkURL string `json:"UNITY_CLIENT_FRAMEWORK_URL"`
+		UnityClientCodeURL      string `json:"UNITY_CLIENT_CODE_URL"`
+		RenderServiceURL        string `json:"RENDER_SERVICE_URL"`
+		BackendEndpointURL      string `json:"BACKEND_ENDPOINT_URL"`
+	}{
+		UIClient:                n.cfg.UIClient,
+		UnityClientURL:          unityClientURL,
+		UnityClientLoaderURL:    unityClientURL + "/WebGL.loader.js",
+		UnityClientDataURL:      unityClientURL + "/WebGL.data.gz",
+		UnityClientFrameworkURL: unityClientURL + "/WebGL.framework.js.gz",
+		UnityClientCodeURL:      unityClientURL + "/WebGL.wasm.gz",
+		RenderServiceURL:        n.cfg.UIClient.FrontendURL + "/api/v3/render",
+		BackendEndpointURL:      n.cfg.UIClient.FrontendURL + "/api/v3/backend",
+	}
+
+	data, err := json.Marshal(&cfg)
+	if err != nil {
+		err := errors.WithMessage(err, "failed to serve ui client cfg")
+		log.Error(err)
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))
+		return
+	}
+
+	if _, err := w.Write(data); err != nil {
+		log.Error(errors.WithMessage(err, "failed to serve ui client cfg"))
+	}
 }
 
 func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
@@ -134,7 +177,7 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 
 	token := string(handshake.UserToken())
 
-	if !auth.VerifyToken(token, n.introspectUrl) {
+	if !auth.VerifyToken(token, n.cfg.Common.IntrospectURL) {
 		log.Error("error: wrong PreHandShake (invalid token), aborting connection")
 		return nil, nil, false, nil
 	}
