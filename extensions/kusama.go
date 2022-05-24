@@ -584,7 +584,7 @@ func (ksm *Kusama) SpaceChangedCallback(client mqtt.Client, msg mqtt.Message) {
 func (ksm *Kusama) EvClock() {
 	// TODO: to change query events only in the current world and to process only first row
 	q := `select sie.title, sie.start, sie.image_hash from space_integration_events sie
-				where sie.start >= curdate()
+				where sie.start >= NOW()
 				order by sie.start
 				limit ?` // TODO: remove limit
 	rows, err := ksm.world.GetStorage().Queryx(q, 3)
@@ -650,7 +650,11 @@ func (ksm *Kusama) TimeLeftInEra() time.Duration {
 	for atomic.LoadUint32(&ksm.hasTimeFix) != 1 {
 		time.Sleep(time.Second)
 	}
-	return ksm.EraDuration - time.Since(ksm.EraStart) - 100*time.Second
+	log.Warnf(
+		"ERA : %v %v %v %v %v", ksm.EraStart.UTC(), ksm.EraStart.UTC(), time.Since(ksm.EraStart.UTC()).Minutes(),
+		time.Since(ksm.EraStart).Minutes(), ksm.EraDuration,
+	)
+	return ksm.EraDuration - time.Since(ksm.EraStart.UTC()) - 100*time.Second
 }
 
 // func (ksm *Kusama) TimeLeftToEvent() time.Duration {
