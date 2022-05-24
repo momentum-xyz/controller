@@ -108,6 +108,11 @@ func (ch *ControllerHub) RemoveGuestsWithDelay() {
 }
 
 func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) {
+	// TODO: fix this
+	if true {
+		return
+	}
+
 	val, ok := usersForRemoveWithDelay.Load(id)
 	if ok {
 		val.Value()()
