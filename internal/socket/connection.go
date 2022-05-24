@@ -76,7 +76,7 @@ func (c *Connection) SetPumpEndCallback(f func()) {
 
 func NewConnection(conn *websocket.Conn) *Connection {
 	c := &Connection{
-		send:      make(chan *websocket.PreparedMessage, 20),
+		send:      make(chan *websocket.PreparedMessage, 10),
 		stopChan:  make(chan bool),
 		buffer:    queue.New(),
 		OnReceive: OnReceiveStub,

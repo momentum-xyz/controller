@@ -490,6 +490,14 @@ func (ksm *Kusama) Run() {
 
 	// handle clock
 	ksm.EvClock()
+	go ksm.EraClockTimer()
+}
+
+func (ksm *Kusama) EraClockTimer() {
+	for {
+		time.Sleep(time.Second * 30)
+		ksm.BroadCastEraTimer()
+	}
 }
 
 func (ksm *Kusama) SortSpaces(s []uuid.UUID, t uuid.UUID) {
@@ -555,8 +563,18 @@ func (ksm *Kusama) SessionCallback(client mqtt.Client, msg mqtt.Message) {
 	}
 	ksm.SetRewardsAccumulatorState(r.CurrentSlotInEra, r.SlotsPerEra)
 	ksm.EraDuration = time.Duration(r.SlotDuration*r.SlotsPerEra) * 1000000
-	ksm.EraStart = time.UnixMilli(r.ActiveEraStart)
-	atomic.StoreUint32(&ksm.hasTimeFix, 1)
+	newEraStart := time.UnixMilli(r.ActiveEraStart)
+	if newEraStart != ksm.EraStart {
+		ksm.EraStart = newEraStart
+		atomic.StoreUint32(&ksm.hasTimeFix, 1)
+		ksm.BroadCastEraTimer()
+	}
+
+}
+func (ksm *Kusama) BroadCastEraTimer() {
+	StringAttributes := make(map[string]string)
+	StringAttributes["kusama_clock_era_time"] = strconv.FormatInt(int64(ksm.TimeLeftInEra().Milliseconds()), 10)
+	ksm.world.Broadcast(ksm.world.GetBuilder().SetObjectStrings(ksm.EraClock, StringAttributes))
 }
 
 func (ksm *Kusama) SpaceChangedCallback(client mqtt.Client, msg mqtt.Message) {
@@ -632,7 +650,7 @@ func (ksm *Kusama) TimeLeftInEra() time.Duration {
 	for atomic.LoadUint32(&ksm.hasTimeFix) != 1 {
 		time.Sleep(time.Second)
 	}
-	return ksm.EraDuration - time.Since(ksm.EraStart)
+	return ksm.EraDuration - time.Since(ksm.EraStart) - 100*time.Second
 }
 
 // func (ksm *Kusama) TimeLeftToEvent() time.Duration {
