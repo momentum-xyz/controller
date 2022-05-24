@@ -392,34 +392,36 @@ func (DB *Database) WriteLastKnownPosition(
 	log.Info("Saved pos for " + userId.String())
 }
 
-func (DB *Database) RemoveOnline(userId, worldId uuid.UUID) {
+func (DB *Database) RemoveOnline(userId, worldId uuid.UUID) error {
 	res, err := DB.Exec(removeOnlineUserByIdAndSpaceIdQuery, utils.BinId(userId), utils.BinId(worldId))
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return err
 	}
 
 	var affected int64
 	affected, err = res.RowsAffected()
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return err
 	}
 
 	log.Debug("Storage: RemoveOnline:", userId.String(), worldId.String(), affected)
+	return nil
 }
 
-func (DB *Database) RemoveFromUsers(userId uuid.UUID) {
+func (DB *Database) RemoveFromUsers(userId uuid.UUID) error {
 	res, err := DB.Exec(removeFromUsersQuery, utils.BinId(userId))
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return err
 	}
 
 	var affected int64
 	affected, err = res.RowsAffected()
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return err
 	}
 
 	log.Debug("Storage: RemoveFromUsers:", userId.String(), affected)
+	return nil
 }
 
 func (DB *Database) RemoveManyFromUsers(ids []uuid.UUID) error {
@@ -450,19 +452,20 @@ func (DB *Database) InsertOnline(userId, spaceId uuid.UUID) {
 	}
 }
 
-func (DB *Database) RemoveDynamicWorldMembership(userId, worldId uuid.UUID) {
+func (DB *Database) RemoveDynamicWorldMembership(userId, worldId uuid.UUID) error {
 	res, err := DB.Exec(removeDynamicWorldMembershipByIdAndWorldIdQuery, utils.BinId(userId), utils.BinId(worldId))
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return err
 	}
 
 	var affected int64
 	affected, err = res.RowsAffected()
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return err
 	}
 
 	log.Debug("Storage: RemoveDynamicWorldMembership:", userId.String(), worldId.String(), affected)
+	return nil
 }
 
 func (DB *Database) QueryWorldConfig(id uuid.UUID) (map[string]interface{}, error) {
@@ -492,7 +495,7 @@ func (DB *Database) QueryWorldConfig(id uuid.UUID) (map[string]interface{}, erro
 func (DB *Database) UpdateHighFives(sender, target uuid.UUID) {
 	_, err := DB.Exec(updateHighFivesQuery, utils.BinId(sender), utils.BinId(target))
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		log.Warn(errors.WithMessage(err, "UpdateHighFives: failed to exec"))
 	}
 }
 
@@ -501,7 +504,7 @@ func (DB *Database) GetUserName(id uuid.UUID) string {
 	var name string
 	err := row.Scan(&name)
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		log.Warn(errors.WithMessage(err, "GetUserName: failed to scan"))
 	}
 	return name
 }

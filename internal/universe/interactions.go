@@ -2,6 +2,7 @@ package universe
 
 import (
 	"encoding/json"
+	"github.com/pkg/errors"
 
 	"github.com/google/uuid"
 
@@ -26,7 +27,9 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 	case posbus.TriggerLeftSpace:
 		targetUUID := m.Target()
 		u.currentSpace.Store(uuid.Nil)
-		u.world.hub.DB.RemoveOnline(u.ID, targetUUID)
+		if err := u.world.hub.DB.RemoveOnline(u.ID, targetUUID); err != nil {
+			log.Warn(errors.WithMessage(err, "InteractionHandler: failed to remove online from db"))
+		}
 		u.world.UpdateOnlineBySpaceId(targetUUID)
 	case posbus.TriggerHighFive:
 		u.HandleHighFive(m)
