@@ -650,7 +650,7 @@ func (ksm *Kusama) TimeLeftInEra() time.Duration {
 	for atomic.LoadUint32(&ksm.hasTimeFix) != 1 {
 		time.Sleep(time.Second)
 	}
-	return ksm.EraDuration - time.Since(ksm.EraStart) - 100*time.Second
+	return ksm.EraDuration - time.Since(ksm.EraStart.UTC()) - 100*time.Second
 }
 
 // func (ksm *Kusama) TimeLeftToEvent() time.Duration {
