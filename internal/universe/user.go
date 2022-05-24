@@ -15,6 +15,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"github.com/pkg/errors"
 )
 
 type User struct {
@@ -150,13 +151,19 @@ func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 
 func (u *User) UserOfflineAction() {
 	log.Info("User: UserOfflineAction:", u.ID.String())
-	u.world.hub.DB.RemoveOnline(u.ID, u.world.ID)
+	if err := u.world.hub.DB.RemoveOnline(u.ID, u.world.ID); err != nil {
+		log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove online from db by world id"))
+	}
 	cspace := u.currentSpace.Load().(uuid.UUID)
 	if cspace != uuid.Nil {
-		u.world.hub.DB.RemoveOnline(u.ID, cspace)
+		if err := u.world.hub.DB.RemoveOnline(u.ID, cspace); err != nil {
+			log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove online from db by space"))
+		}
 		// u.currentSpace. = uuid.Nil
 	}
-	u.world.hub.DB.RemoveDynamicWorldMembership(u.ID, u.world.ID)
+	if err := u.world.hub.DB.RemoveDynamicWorldMembership(u.ID, u.world.ID); err != nil {
+		log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove membership from db"))
+	}
 	if u.isGuest {
 		u.world.hub.RemoveUserWithDelay(u.ID, defaultDelayForUsersForRemove)
 	}
@@ -220,7 +227,6 @@ func (u *User) SwitchWorld(newWorldId uuid.UUID) {
 	// TODO: shouldn't u be run in a separate goroutine not to sleep caller goroutine?
 
 	// world.unregisterUser <- u
-
 }
 
 func (u *User) UpdatePosition(data []byte) {

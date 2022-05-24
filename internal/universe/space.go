@@ -345,7 +345,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 
 	// if s.initialized {
 	if isdefchanged {
-		s.world.spawnNeedUpdate = true
+		s.world.spawnNeedUpdate.Set(true)
 		log.Debug("send addStaticOBject")
 		defArray := make([]message.ObjectDefinition, 1)
 		s.filObjDef(&defArray[0])
@@ -416,7 +416,7 @@ func (s *Space) UpdatePosition(pos cmath.Vec3, theta float64, force bool) {
 		s.position = pos
 		s.theta = theta
 
-		s.world.spawnNeedUpdate = true
+		s.world.spawnNeedUpdate.Set(true)
 
 		msg := posbus.NewSetStaticObjectPositionMsg()
 		msg.SetPosition(s.id, pputils.Vec3(pos))
@@ -639,7 +639,7 @@ func (s *Space) UpdateChildren() error {
 	// 	os.Exit(0)
 	// }
 	if changed {
-		s.world.spawnNeedUpdate = true
+		s.world.spawnNeedUpdate.Set(true)
 		// logger.Logln(4, "New children:", cids)
 		s.children = cids
 		for u := range fixedChildren {

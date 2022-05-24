@@ -110,7 +110,7 @@ func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
 
 	conn, claims, ok, handshakeObj := n.PreHandShake(w, r)
 	if !ok {
-		log.Error("error: wrong PreHandShake, aborting connection")
+		//log.Error("error: wrong PreHandShake, aborting connection")
 		return
 	}
 
@@ -142,7 +142,7 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 ) {
 	socketConnection, err := upgrader.Upgrade(response, request, nil)
 	if err != nil {
-		log.Error("upgrade:", err)
+		log.Error("error: socket upgrade error, aborting connection:", err)
 		return nil, nil, false, nil
 	}
 
@@ -177,10 +177,12 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 
 	token := string(handshake.UserToken())
 
-	if !auth.VerifyToken(token, n.cfg.Common.IntrospectURL) {
-		log.Error("error: wrong PreHandShake (invalid token), aborting connection")
+	if err != nil || !auth.VerifyToken(token, n.cfg.Common.IntrospectURL) {
+		userID := message.DeserializeGUID(handshake.UserId(nil))
+		log.Errorf("error: wrong PreHandShake (invalid token: %v ), aborting connection", userID)
 		return nil, nil, false, nil
 	}
+
 	parsed, _ := jwt.Parse(
 		token, func(token *jwt.Token) (interface{}, error) {
 			return []byte(""), nil
