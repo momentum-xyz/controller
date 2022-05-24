@@ -155,6 +155,20 @@ func (mb *Builder) FinishMessage(
 	return mb.WrapMessage(rawBytes)
 }
 
+// FinishMessageBytes is used when we want to skip gorilla/websocket.PreparedMessage type
+func (mb *Builder) FinishMessageBytes(builder *flatbuffers.Builder, msgType api.Msg, msgOffset flatbuffers.UOffsetT) (msg, buf []byte) {
+	api.FlatBuffMsgStart(builder)
+	api.FlatBuffMsgAddMsgType(builder, msgType)
+	api.FlatBuffMsgAddMsg(builder, msgOffset)
+	flatBuffMsgOffset := api.FlatBuffMsgEnd(builder)
+	builder.Finish(flatBuffMsgOffset)
+	rawBytes := builder.FinishedBytes()
+
+	m := posbus.NewMessage(posbus.MsgTypeFlatBufferMessage, len(rawBytes))
+	copy(m.Msg(), rawBytes)
+	return m.Msg(), m.Buf()
+}
+
 func (mb *Builder) SerializeGUID(builder *flatbuffers.Builder, uuid uuid.UUID) flatbuffers.UOffsetT {
 	swapedBytes := unityUUID(uuid[:])
 	least := binary.LittleEndian.Uint64(swapedBytes[0:8])

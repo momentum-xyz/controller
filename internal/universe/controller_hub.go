@@ -35,7 +35,7 @@ const (
 											 join node_settings ns2	where ns1.name = 'id' and ns2.name = 'name';`
 )
 
-var usersForRemoveWithDelay = utils.NewSyncMap[uuid.UUID, context.CancelFunc]()
+var usersForRemoveWithDelay = utils.NewSyncMap[uuid.UUID, utils.Unique[context.CancelFunc]]()
 
 var log = logger.L()
 
@@ -103,19 +103,29 @@ func (ch *ControllerHub) RemoveGuestsWithDelay() {
 }
 
 func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) {
-	usersForRemoveWithDelay.Mu.Lock()
-	defer usersForRemoveWithDelay.Mu.Unlock()
-
-	cancel, ok := usersForRemoveWithDelay.Data[id]
+	val, ok := usersForRemoveWithDelay.Load(id)
 	if ok {
-		cancel()
+		val.Value()()
 	}
 
-	var ctx context.Context
-	ctx, cancel = context.WithCancel(context.Background())
-	usersForRemoveWithDelay.Data[id] = cancel
+	ctx, cancel := context.WithCancel(context.Background())
+	val = utils.NewUnique(cancel)
+	usersForRemoveWithDelay.Store(id, val)
 
 	go func() {
+		defer func() {
+			usersForRemoveWithDelay.Mu.Lock()
+			defer usersForRemoveWithDelay.Mu.Unlock()
+
+			val1, ok := usersForRemoveWithDelay.Data[id]
+			if !ok {
+				return
+			}
+			if val1.Equal(val) {
+				delete(usersForRemoveWithDelay.Data, id)
+			}
+		}()
+
 		dt := time.NewTimer(delay)
 		select {
 		case <-dt.C:
