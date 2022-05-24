@@ -21,7 +21,7 @@ import (
 
 const (
 	garbageCollectionInterval = 10 * time.Second
-	logGoRoutinesInterval     = 2 * time.Minute
+	logRuntimeStatInterval    = 2 * time.Minute
 )
 
 // ExtensionLoader is global variable that holds available world extensions
@@ -53,15 +53,18 @@ func run() error {
 	go hub.NetworkRunner()
 
 	go runGarbageCollection(garbageCollectionInterval)
-	go logNumberOfGoroutines(logGoRoutinesInterval)
+	go logRuntimeStat(logRuntimeStatInterval)
 	address, port := cfg.Settings.Address, strconv.FormatUint(uint64(cfg.Settings.Port), 10)
 
 	return networking.ListenAndServe(address, port)
 }
 
-func logNumberOfGoroutines(interval time.Duration) {
+func logRuntimeStat(interval time.Duration) {
 	for {
-		log.Infof("Num Goroutines: %d", runtime.NumGoroutine())
+		var m runtime.MemStats
+		runtime.ReadMemStats(&m)
+		log.Warnf("Runtime Stat:\n\tAlloc: %dMiB\n\tSys: %dMiB\n\tMallocs: %d\n\tFreese: %d\n\tGoroutines: %d",
+			bToMb(m.Alloc), bToMb(m.Sys), m.Mallocs, m.Frees, runtime.NumGoroutine())
 		time.Sleep(interval)
 	}
 }
@@ -71,4 +74,8 @@ func runGarbageCollection(gcInterval time.Duration) {
 		time.Sleep(gcInterval)
 		runtime.GC()
 	}
+}
+
+func bToMb(b uint64) uint64 {
+	return b / 1024 / 1024
 }
