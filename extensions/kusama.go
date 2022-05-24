@@ -650,6 +650,10 @@ func (ksm *Kusama) TimeLeftInEra() time.Duration {
 	for atomic.LoadUint32(&ksm.hasTimeFix) != 1 {
 		time.Sleep(time.Second)
 	}
+	log.Warnf(
+		"ERA : %v %v %v %v %v", ksm.EraStart.UTC(), ksm.EraStart.UTC(), time.Since(ksm.EraStart.UTC()).Minutes(),
+		time.Since(ksm.EraStart).Minutes(), ksm.EraDuration,
+	)
 	return ksm.EraDuration - time.Since(ksm.EraStart.UTC()) - 100*time.Second
 }
 
