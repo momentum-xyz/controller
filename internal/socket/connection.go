@@ -1,6 +1,7 @@
 package socket
 
 import (
+	"sync"
 	"time"
 
 	"github.com/momentum-xyz/controller/internal/logger"
@@ -27,13 +28,15 @@ const (
 var log = logger.L()
 
 type Connection struct {
-	conn      *websocket.Conn
 	send      chan *websocket.PreparedMessage
 	buffer    *queue.Queue
 	OnReceive func(m *posbus.Message)
 	OnPumpEnd func()
 	stopChan  chan bool
 	canWrite  utils.TAtomBool
+	mu        *sync.Mutex
+	conn      *websocket.Conn
+	closed    bool
 }
 
 func OnReceiveStub(m *posbus.Message) {
@@ -50,6 +53,14 @@ func OnPumpEndStub() {
 // }
 
 func (c *Connection) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return
+	}
+	c.closed = true
+
 	log.Info("Closing connection and chan")
 	close(c.send)
 	c.conn.Close()
@@ -65,12 +76,13 @@ func (c *Connection) SetPumpEndCallback(f func()) {
 
 func NewConnection(conn *websocket.Conn) *Connection {
 	c := &Connection{
-		conn:      conn,
 		send:      make(chan *websocket.PreparedMessage, 20),
 		stopChan:  make(chan bool),
 		buffer:    queue.New(),
 		OnReceive: OnReceiveStub,
 		OnPumpEnd: OnPumpEndStub,
+		mu:        new(sync.Mutex),
+		conn:      conn,
 	}
 	c.canWrite.Set(false)
 	return c
@@ -176,13 +188,19 @@ func (c *Connection) StartWritePump() {
 }
 
 func (c *Connection) Send(m *websocket.PreparedMessage) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return
+	}
 	c.send <- m
 }
 
 func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
 	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-	var err error
-	if err = c.conn.WritePreparedMessage(m); err != nil {
+	err := c.conn.WritePreparedMessage(m)
+	if err != nil {
 		log.Errorf("error pushing message: %v", err)
 	}
 	return err
