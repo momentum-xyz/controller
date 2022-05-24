@@ -92,6 +92,11 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 }
 
 func (ch *ControllerHub) RemoveGuestsWithDelay() {
+	// TODO: fix this
+	if true {
+		return
+	}
+
 	guests, err := ch.DB.GetUsersIDsByType(ch.guestUserTypeId)
 	if err != nil {
 		log.Error(errors.WithMessage(errors.WithMessage(err, "failed to get guests"), "failed to remove guests"))
