@@ -92,11 +92,6 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 }
 
 func (ch *ControllerHub) RemoveGuestsWithDelay() {
-	// TODO: fix this
-	if true {
-		return
-	}
-
 	guests, err := ch.DB.GetUsersIDsByType(ch.guestUserTypeId)
 	if err != nil {
 		log.Error(errors.WithMessage(errors.WithMessage(err, "failed to get guests"), "failed to remove guests"))
@@ -108,11 +103,6 @@ func (ch *ControllerHub) RemoveGuestsWithDelay() {
 }
 
 func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) {
-	// TODO: fix this
-	if true {
-		return
-	}
-
 	val, ok := usersForRemoveWithDelay.Load(id)
 	if ok {
 		val.Value()()
@@ -139,7 +129,9 @@ func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) 
 		dt := time.NewTimer(delay)
 		select {
 		case <-dt.C:
-			ch.DB.RemoveFromUsers(id)
+			if err := ch.DB.RemoveFromUsers(id); err != nil {
+				log.Warn(errors.WithMessage(err, "RemoveUserWithDelay: failed to remove from db"))
+			}
 			log.Debug("RemoveUserWithDelay: user removed: %s", id.String())
 		case <-ctx.Done():
 			dt.Stop()
