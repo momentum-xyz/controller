@@ -76,7 +76,7 @@ type WorldController struct {
 
 	// spawn stuff
 	spawnMsg        atomic.Value
-	spawnNeedUpdate bool
+	spawnNeedUpdate utils.TAtomBool
 
 	AdditionalExtensions map[string]extension.Extension
 	MainExtension        extension.Extension
@@ -102,8 +102,8 @@ func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *messa
 		registerSpace:   make(chan *RegRequest, 1024),
 		unregisterSpace: make(chan uuid.UUID, 1024),
 		updateSpace:     make(chan uuid.UUID, 1024),
-		spawnNeedUpdate: true,
 	}
+	controller.spawnNeedUpdate.Set(true)
 	controller.users = NewUsers(&controller)
 	controller.spaces = newSpaces(&controller, hub.SpaceStorage, msgBuilder)
 
@@ -343,14 +343,14 @@ func (wc *WorldController) AddUserToWorld(u *User) {
 	wc.users.Add(u)
 	log.Info("User added to the world")
 
-	if wc.spawnNeedUpdate {
+	if wc.spawnNeedUpdate.Get() {
 		if wc.spaces.Num() > 0 {
 			log.Info("***********Update")
 			defArray := make([]message.ObjectDefinition, wc.spaces.Num())
 			i := 0
 			wc.spaces.Get(wc.ID).PushObjDef(defArray, &i)
-			wc.spawnNeedUpdate = false
 			wc.spawnMsg.Store(wc.msgBuilder.MsgAddStaticObjects(defArray))
+			wc.spawnNeedUpdate.Set(false)
 		}
 	}
 	u.connection.SendDirectly(wc.spawnMsg.Load().(*websocket.PreparedMessage))
