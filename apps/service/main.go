@@ -21,7 +21,7 @@ import (
 
 const (
 	garbageCollectionInterval = 10 * time.Second
-	logRuntimeStatInterval    = 2 * time.Minute
+	logRuntimeStatInterval    = 10 * time.Second
 )
 
 // ExtensionLoader is global variable that holds available world extensions
@@ -63,8 +63,8 @@ func logRuntimeStat(interval time.Duration) {
 	for {
 		var m runtime.MemStats
 		runtime.ReadMemStats(&m)
-		log.Warnf("Runtime Stat:\n\tAlloc: %dMiB\n\tSys: %dMiB\n\tMallocs: %d\n\tFreese: %d\n\tGoroutines: %d",
-			bToMb(m.Alloc), bToMb(m.Sys), m.Mallocs, m.Frees, runtime.NumGoroutine())
+		log.Warnf("Runtime Stat:\n\tAlloc: %dMiB\n\tSys: %dMiB\n\tMallocs: %d\n\tFreese: %d\n\t\n\tMallDiff: %d\n\tGoroutines: %d",
+			bToMb(m.Alloc), bToMb(m.Sys), m.Mallocs, m.Frees, m.Mallocs-m.Frees, runtime.NumGoroutine())
 		time.Sleep(interval)
 	}
 }
