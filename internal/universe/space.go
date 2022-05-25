@@ -732,10 +732,10 @@ func (s *Space) CalculateVibes() int64 {
 	q := `select count(*) from vibes where spaceId=?`
 	rows, err := s.world.GetStorage().Queryx(q, utils.BinId(s.id))
 	//noinspection GoUnhandledErrorResult
-	defer rows.Close()
 	if err != nil {
 		log.Errorf("could not get vibes for spaceId: %v", s.id)
 	}
+	defer rows.Close()
 	vibesCount := int64(0)
 	rows.Next()
 	err = rows.Scan(&vibesCount)
@@ -750,10 +750,10 @@ func (s *Space) GetOnlineUsers() int64 {
 	q := `SELECT count(*) FROM online_users WHERE spaceId = ?`
 	rows, err := s.world.GetStorage().Queryx(q, utils.BinId(s.id))
 	//noinspection GoUnhandledErrorResult
-	defer rows.Close()
 	if err != nil {
 		log.Errorf("could not get online users for spaceId: %v", s.id)
 	}
+	defer rows.Close()
 	onlineUsers := int64(0)
 	rows.Next()
 	err = rows.Scan(&onlineUsers)

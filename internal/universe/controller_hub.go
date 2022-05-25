@@ -187,11 +187,11 @@ func (ch *ControllerHub) GetNodeSettings() {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	rows, err := ch.DB.QueryContext(ctx, selectNodeSettingsIdAndName)
-	defer rows.Close()
 	if err != nil {
 		log.Info("could not get node settings", err)
 		return
 	}
+	defer rows.Close()
 	var n node
 	if rows.Next() {
 		err = rows.Scan(&n.id, &n.name)
