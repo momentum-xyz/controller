@@ -1,28 +1,27 @@
-# controller
+# Momentum controller
 
-## Description (TODO)
-Responsibility and purpose of service.
+Controller is responsible for Worlds logic as for handling of backend and frontend messages.
 
-## Setup
+## Building
 
-`config.go` is responsible for handling configs. 
+```console
+make build
+```
 
-It looks for `config.yaml` file in project directory.
-If there is one it reads config from there.
-After that it reads env variables and overwrites any variables from local config.
-Config will be printed in console on start.
+Executable is placed in `bin/controller`.
 
-A sample config file is left in repository to be filled.
+Or
+```console
+make run
+```
 
-## Running locally
+To run the application.
 
-Open `go.mod` file and check which version of Go is used.
-It should have line similar to this one: `go 1.16`. This means you need to install 1.16 version of Go.
+## Running
 
-After successfull install you can build the service with:
-```bash 
-    go build
-``` 
-This will create an executable `posbus` that can be ran.
+It can be configured by a yaml config file and/or environment variables.
+For details look in `internal/config` folder.
+
+## Note
 
 If you run the service locally Unity client won't be able to connect to it securely. Use `ws:localhost:port/posbus` as URL in `NetworkConfiguration`.

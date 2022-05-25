@@ -19,7 +19,7 @@ require (
 	github.com/sasha-s/go-deadlock v0.3.1
 	go.etcd.io/bbolt v1.3.6
 	go.uber.org/zap v1.21.0
-	golang.org/x/oauth2 v0.0.0-20220411215720-9780585627b5
+	golang.org/x/oauth2 v0.0.0-20220524215830-622c5d57e401
 	gopkg.in/yaml.v2 v2.4.0
 )
 

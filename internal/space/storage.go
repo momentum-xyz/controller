@@ -83,11 +83,11 @@ func (s *storage) SelectChildrenEntriesByParentId(id []byte) (map[uuid.UUID]map[
 		`SELECT spaces.*,s.visible as st_visible FROM spaces join space_types s WHERE s.id = spaces.spaceTypeId and parentId =?`,
 		id,
 	)
-	defer rows.Close()
 	if err != nil {
 		log.Error(err)
 		return nil, err
 	}
+	defer rows.Close()
 	result := make(map[uuid.UUID]map[string]interface{})
 
 	flag := true
@@ -131,11 +131,10 @@ func (s *storage) SelectChildrenEntriesByParentId(id []byte) (map[uuid.UUID]map[
 func (s *storage) LoadSpaceTileTextures(id uuid.UUID) map[string]string {
 	textures := make(map[string]string)
 	res, err := s.db.Query(selectTilesQuery, utils.BinId(id))
-	defer res.Close()
-
 	if err != nil {
 		log.Error(err)
 	}
+	defer res.Close()
 
 	for res.Next() {
 		var permanentType string
