@@ -2,9 +2,9 @@ package utils
 
 import (
 	"database/sql"
-	"github.com/google/uuid"
-
 	"github.com/momentum-xyz/controller/internal/logger"
+
+	"github.com/google/uuid"
 )
 
 var log = logger.L()
@@ -43,17 +43,21 @@ func LoadRow(rows *sql.Rows) map[string]interface{} {
 	return entry
 }
 
-func F64FromMap(parametersMap map[string]interface{}, k string, defaultValue float64) float64 {
-	if v1, ok := parametersMap[k]; ok {
-		return v1.(float64)
+func F64FromMap(parametersMap map[string]any, k string, defaultValue float64) float64 {
+	if v, ok := parametersMap[k]; ok {
+		if v1, ok := v.(float64); ok {
+			return v1
+		}
 	}
 
 	return defaultValue
 }
 
-func BoolFromMap(parametersMap map[string]interface{}, k string, defaultValue bool) bool {
-	if v1, ok := parametersMap[k]; ok {
-		return v1.(bool)
+func BoolFromMap(parametersMap map[string]any, k string, defaultValue bool) bool {
+	if v, ok := parametersMap[k]; ok {
+		if v1, ok := v.(bool); ok {
+			return v1
+		}
 	}
 
 	return defaultValue
@@ -61,17 +65,27 @@ func BoolFromMap(parametersMap map[string]interface{}, k string, defaultValue bo
 
 func SpaceTypeFromMap(parametersMap map[string]interface{}) uuid.UUID {
 	rt, ok := parametersMap["kind"]
-	if !ok || rt.(string) == "default" {
+	if !ok {
+		log.Warn("SpaceTypeFromMap: kind not found")
 		return uuid.Nil
 	}
-	kind, err := uuid.Parse(rt.(string))
+	var k string
+	if k, ok = rt.(string); !ok || k == "default" {
+		log.Warn("SpaceTypeFromMap: kind is default")
+		return uuid.Nil
+	}
+	kind, err := uuid.Parse(k)
 	if err != nil {
+		log.Warnf("SpaceTypeFromMap: kind is not a valid uuid: %s\n", k)
 		return uuid.Nil
 	}
 	return kind
 }
 
 func DbToUuid(f interface{}) uuid.UUID {
-	q, _ := uuid.FromBytes([]byte((f).(string)))
+	q, err := uuid.FromBytes([]byte((f).(string)))
+	if err != nil {
+		log.Errorf("DbToUuid: %+v", err)
+	}
 	return q
 }

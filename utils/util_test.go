@@ -6,6 +6,41 @@ import (
 	"testing"
 )
 
+func TestF64FromMap(t *testing.T) {
+	m := map[string]interface{}{
+		"a": 1.0,
+		"b": "2",
+		"c": "3",
+	}
+	def := 4.44
+	tests := []struct {
+		name     string
+		input    map[string]any
+		key      string
+		default_ float64
+		expected float64
+	}{
+		{
+			input:    m,
+			key:      "a",
+			expected: 1.0,
+		},
+		{
+			input:    m,
+			key:      "b",
+			expected: def,
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			actual := F64FromMap(test.input, test.key, def)
+			if actual != test.expected {
+				t.Errorf("expected %v, got %v", test.expected, actual)
+			}
+		})
+	}
+}
+
 func TestPlaceKindFromMap(t *testing.T) {
 	uuidHelperParse := func(s interface{}) uuid.UUID {
 		u, err := uuid.Parse(s.(string))
