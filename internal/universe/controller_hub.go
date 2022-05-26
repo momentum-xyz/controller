@@ -121,11 +121,7 @@ func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) 
 			usersForRemoveWithDelay.Mu.Lock()
 			defer usersForRemoveWithDelay.Mu.Unlock()
 
-			val1, ok := usersForRemoveWithDelay.Data[id]
-			if !ok {
-				return
-			}
-			if val1.Equal(val) {
+			if val1, ok := usersForRemoveWithDelay.Data[id]; ok && val1.Equals(val) {
 				delete(usersForRemoveWithDelay.Data, id)
 			}
 		}()
