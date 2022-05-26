@@ -185,28 +185,7 @@ func (s *Space) UpdateSpace() error {
 	return nil
 }
 
-func checkStringForChange(newval *string, current *string, flag *bool) {
-	if *newval != *current {
-		*current = *newval
-		*flag = true
-	}
-}
-
-func checkBoolForChange(newval *bool, current *bool, flag *bool) {
-	if *newval != *current {
-		*current = *newval
-		*flag = true
-	}
-}
-
-func checkUUIDForChange(newval *uuid.UUID, current *uuid.UUID, flag *bool) {
-	if *newval != *current {
-		*current = *newval
-		*flag = true
-	}
-}
-
-func checkUint8ForChange(newval *uint8, current *uint8, flag *bool) {
+func checkForChange[V comparable](newval *V, current *V, flag *bool) {
 	if *newval != *current {
 		*current = *newval
 		*flag = true
@@ -227,10 +206,10 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	s.pls = s.stype.Placements
 	isdefchanged := false
 	name := entry["name"].(string)
-	checkStringForChange(&name, &s.Name, &isdefchanged)
+	checkForChange(&name, &s.Name, &isdefchanged)
 	// fmt.Println("PR:", entry["parentId"])
 	parentId, _ := uuid.FromBytes([]byte((entry["parentId"]).(string)))
-	checkUUIDForChange(&parentId, &s.parentId, &isdefchanged)
+	checkForChange(&parentId, &s.parentId, &isdefchanged)
 
 	// INFO_UI_ID
 	if s.stype.InfoUIId != uuid.Nil {
@@ -240,9 +219,9 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 
 	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
 		minimap := uint8(minimapEntry.(int64))
-		checkUint8ForChange(&minimap, &s.minimap, &isdefchanged)
+		checkForChange(&minimap, &s.minimap, &isdefchanged)
 	} else {
-		checkUint8ForChange(&s.stype.Minimap, &s.minimap, &isdefchanged)
+		checkForChange(&s.stype.Minimap, &s.minimap, &isdefchanged)
 	}
 
 	assetId := uuid.Nil
@@ -253,10 +232,10 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	}
 	// logger.Logln(1, "Asset:", s.id, assetId)
 	// fmt.Println("AT:", s.id, s.assetId)
-	checkUUIDForChange(&assetId, &s.assetId, &isdefchanged)
+	checkForChange(&assetId, &s.assetId, &isdefchanged)
 
 	tether := true
-	checkBoolForChange(&tether, &s.tether, &isdefchanged)
+	checkForChange(&tether, &s.tether, &isdefchanged)
 
 	textures := s.storage.LoadSpaceTileTextures(s.id)
 
