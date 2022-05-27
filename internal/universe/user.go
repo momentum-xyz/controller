@@ -89,7 +89,7 @@ func (u *User) Register(wc *WorldController) {
 	u.world.AddUserToWorld(u) // AddToWorld is happening there
 	wc.hub.mqtt.SafeSubscribe("user_control/"+wc.ID.String()+"/"+u.ID.String()+"/#", 1, u.MQTTMessageHandler)
 	// remove user from delay remove list
-	if val, ok := usersForRemoveWithDelay.Load(u.ID); ok {
+	if val, ok := u.world.hub.usersForRemoveWithDelay.Load(u.ID); ok {
 		val.Value()()
 	}
 	log.Warnf("Registration done for %s(%s) : guest=%+v ", u.name, u.ID.String(), u.isGuest)

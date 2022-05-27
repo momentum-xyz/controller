@@ -19,7 +19,7 @@ import (
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	// Third-Party
-	"github.com/dgrijalva/jwt-go"
+	"github.com/golang-jwt/jwt"
 	flatbuffers "github.com/google/flatbuffers/go"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"

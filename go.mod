@@ -3,10 +3,10 @@ module github.com/momentum-xyz/controller
 go 1.18
 
 require (
-	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/eapache/queue v1.1.0
 	github.com/eclipse/paho.mqtt.golang v1.3.5
 	github.com/go-sql-driver/mysql v1.6.0
+	github.com/golang-jwt/jwt v3.2.2+incompatible
 	github.com/google/flatbuffers v2.0.6+incompatible
 	github.com/google/uuid v1.3.0
 	github.com/gorilla/websocket v1.5.0

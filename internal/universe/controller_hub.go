@@ -35,14 +35,13 @@ const (
 											 join node_settings ns2	where ns1.name = 'id' and ns2.name = 'name';`
 )
 
-var usersForRemoveWithDelay = utils.NewSyncMap[uuid.UUID, utils.Unique[context.CancelFunc]]()
-
 var log = logger.L()
 
 type node struct {
 	id   uuid.UUID
 	name string
 }
+
 type ControllerHub struct {
 	cfg          *config.Config
 	Worlds       map[uuid.UUID]*WorldController
@@ -54,23 +53,25 @@ type ControllerHub struct {
 	UserStorage  user.Storage
 	net          *net.Networking
 	// influx       influx_api.WriteAPIBlocking
-	mqtt            safemqtt.Client
-	msgBuilder      *message.Builder
-	guestUserTypeId uuid.UUID
+	mqtt                    safemqtt.Client
+	msgBuilder              *message.Builder
+	guestUserTypeId         uuid.UUID
+	usersForRemoveWithDelay *utils.SyncMap[uuid.UUID, utils.Unique[context.CancelFunc]]
 }
 
 func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder *message.Builder) *ControllerHub {
 	db := storage.OpenDB(&cfg.MySQL)
 	hub := &ControllerHub{
-		cfg:          cfg,
-		Worlds:       make(map[uuid.UUID]*WorldController),
-		DB:           db,
-		SpaceStorage: space.NewStorage(*db.DB),
-		WorldStorage: world.NewStorage(*db.DB),
-		UserStorage:  user.NewStorage(*db.DB),
-		net:          networking,
-		mqtt:         safemqtt.InitMQTTClient(&cfg.MQTT, "worlds_controller-"+uuid.NewString()),
-		msgBuilder:   msgBuilder,
+		cfg:                     cfg,
+		Worlds:                  make(map[uuid.UUID]*WorldController),
+		DB:                      db,
+		SpaceStorage:            space.NewStorage(*db.DB),
+		WorldStorage:            world.NewStorage(*db.DB),
+		UserStorage:             user.NewStorage(*db.DB),
+		net:                     networking,
+		mqtt:                    safemqtt.InitMQTTClient(&cfg.MQTT, "worlds_controller-"+uuid.NewString()),
+		msgBuilder:              msgBuilder,
+		usersForRemoveWithDelay: utils.NewSyncMap[uuid.UUID, utils.Unique[context.CancelFunc]](),
 	}
 
 	deadlock.Opts.DeadlockTimeout = time.Second * 60
@@ -103,26 +104,24 @@ func (ch *ControllerHub) RemoveGuestsWithDelay() {
 }
 
 func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) {
-	usersForRemoveWithDelay.Mu.Lock()
-
-	val, ok := usersForRemoveWithDelay.Data[id]
+	ch.usersForRemoveWithDelay.Mu.Lock()
+	val, ok := ch.usersForRemoveWithDelay.Data[id]
 	if ok {
 		val.Value()()
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	val = utils.NewUnique(cancel)
-	usersForRemoveWithDelay.Data[id] = val
-
-	usersForRemoveWithDelay.Mu.Unlock()
+	ch.usersForRemoveWithDelay.Data[id] = val
+	ch.usersForRemoveWithDelay.Mu.Unlock()
 
 	go func() {
 		defer func() {
-			usersForRemoveWithDelay.Mu.Lock()
-			defer usersForRemoveWithDelay.Mu.Unlock()
+			ch.usersForRemoveWithDelay.Mu.Lock()
+			defer ch.usersForRemoveWithDelay.Mu.Unlock()
 
-			if val1, ok := usersForRemoveWithDelay.Data[id]; ok && val1.Equals(val) {
-				delete(usersForRemoveWithDelay.Data, id)
+			if val1, ok := ch.usersForRemoveWithDelay.Data[id]; ok && val1.Equals(val) {
+				delete(ch.usersForRemoveWithDelay.Data, id)
 			}
 		}()
 
