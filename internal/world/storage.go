@@ -1,12 +1,12 @@
 package world
 
 import (
-	"errors"
-
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/utils"
+
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -16,11 +16,9 @@ const (
 	deleteDynamicMembershipQuery = `DELETE FROM user_spaces_dynamic WHERE spaceId = ?;`
 )
 
-var log = logger.L()
-
 type Storage interface {
 	GetName(id uuid.UUID) (string, error)
-	GetWorlds() []uuid.UUID
+	GetWorlds() ([]uuid.UUID, error)
 	CleanOnlineUsers(spaceID uuid.UUID) error
 	CleanDynamicMembership(spaceID uuid.UUID) error
 }
@@ -29,68 +27,85 @@ type storage struct {
 	db sqlx.DB
 }
 
+var log = logger.L()
+
 func NewStorage(db sqlx.DB) Storage {
 	return &storage{
 		db: db,
 	}
 }
 
-func (s *storage) GetWorlds() []uuid.UUID {
-	res, _ := s.db.Query(selectAllSpacesQuery, utils.BinId(uuid.Nil), utils.BinId(uuid.Nil))
+func (s *storage) GetWorlds() ([]uuid.UUID, error) {
+	res, err := s.db.Query(selectAllSpacesQuery, utils.BinId(uuid.Nil), utils.BinId(uuid.Nil))
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to query db")
+	}
 	defer res.Close()
+
 	worlds := make([]uuid.UUID, 0)
 	for res.Next() {
 		id := make([]byte, 16)
 		if err := res.Scan(&id); err != nil {
-			log.Error(err)
+			return nil, errors.WithMessage(err, "failed to scan rows")
 		}
 		worldId, err := uuid.FromBytes(id)
-		if err == nil {
-			log.Info("Config Id:", worldId)
-			worlds = append(worlds, worldId)
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed to parse world id")
 		}
+		log.Info("Config Id:", worldId)
+		worlds = append(worlds, worldId)
 	}
-	return worlds
+
+	return worlds, nil
 }
 
 func (s *storage) GetName(id uuid.UUID) (string, error) {
 	rows, err := s.db.Query(selectWorldNameByIdQuery, utils.BinId(id))
 	if err != nil {
-		return "", errors.New("GetWorldName: No world not found in DB")
+		return "", errors.WithMessage(err, "failed to query db")
 	}
 	defer rows.Close()
+
 	var wName string
 	if rows.Next() {
-		err := rows.Scan(&wName)
-		if err != nil {
-			return "", err
+		if err := rows.Scan(&wName); err != nil {
+			return "", errors.WithMessage(err, "failed to scan rows")
 		}
 	}
+
 	return wName, nil
 }
 
 func (s *storage) CleanOnlineUsers(spaceID uuid.UUID) error {
 	res, err := s.db.Exec(deleteOnlineUsersQuery, utils.BinId(spaceID))
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return errors.WithMessage(err, "failed to exec db")
 	}
 
 	var affected int64
 	affected, err = res.RowsAffected()
-	log.Debug("World storage: CleanOnlineUsers:", spaceID.String(), affected)
+	if err != nil {
+		// TODO: maybe return error here?
+		return nil
+	}
 
+	log.Debug("World storage: CleanOnlineUsers:", spaceID.String(), affected)
 	return err
 }
 
 func (s *storage) CleanDynamicMembership(spaceID uuid.UUID) error {
 	res, err := s.db.Exec(deleteDynamicMembershipQuery, utils.BinId(spaceID))
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return errors.WithMessage(err, "failed to exec db")
 	}
 
 	var affected int64
 	affected, err = res.RowsAffected()
-	log.Debug("World storage: CleanDynamicMembership:", spaceID.String(), affected)
+	if err != nil {
+		// TODO: maybe return error here?
+		return nil
+	}
 
+	log.Debug("World storage: CleanDynamicMembership:", spaceID.String(), affected)
 	return err
 }

@@ -76,6 +76,7 @@ func (s *storage) SelectChildrenSpacesByParentId(id []byte) ([]childrenSpace, er
 		}
 		result = append(result, child)
 	}
+
 	return result, nil
 }
 
@@ -126,6 +127,7 @@ func (s *storage) SelectChildrenEntriesByParentId(id []byte) (map[uuid.UUID]map[
 		}
 		result[id] = entry
 	}
+
 	return result, nil
 }
 
@@ -149,6 +151,7 @@ func (s *storage) LoadSpaceTileTextures(id uuid.UUID) (map[string]string, error)
 			textures[permanentType] = hash.String
 		}
 	}
+
 	return textures, nil
 }
 

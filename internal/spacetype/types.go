@@ -61,23 +61,22 @@ func NewSpaceTypes(spaceStorage space.Storage) *TSpaceTypes {
 
 func (t *TSpaceTypes) Set(id uuid.UUID, st *TSpaceType) {
 	t.lock.Lock()
+	defer t.lock.Unlock()
+
 	t.spaceTypes[id] = st
-	t.lock.Unlock()
 }
 
 func (t *TSpaceTypes) Get(id uuid.UUID) (*TSpaceType, error) {
 	t.lock.Lock()
 	defer t.lock.Unlock()
+
 	if spaceType, ok := t.spaceTypes[id]; ok {
 		return spaceType, nil
 	}
-	spaceType := &TSpaceType{
-		Id: id,
-	}
-	err := t.UpdateMetaSpaceType(spaceType)
 
-	if err != nil {
-		return nil, errors.New("DB missing spaceType: " + spaceType.Id.String())
+	spaceType := &TSpaceType{Id: id}
+	if err := t.UpdateMetaSpaceType(spaceType); err != nil {
+		return nil, errors.WithMessagef(err, "failed to update meta space type: %s", spaceType.Id)
 	}
 
 	t.spaceTypes[id] = spaceType
@@ -89,12 +88,13 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	log.Info("Getting SpaceType by Id: ", x.Id)
 	entry, err := t.spaceStorage.QuerySingleSpaceTypeByUUID(x.Id)
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.WithMessage(err, "failed to get entry")
 	}
 
 	if aux, ok := entry[AuxiliaryTables]; ok && aux != nil {
-		_ = json.Unmarshal([]byte(aux.(string)), &x.AuxTables)
+		if err := json.Unmarshal([]byte(aux.(string)), &x.AuxTables); err != nil {
+			return errors.WithMessage(err, "failed to unmarshal aux tables")
+		}
 		log.Info(x.AuxTables)
 	}
 	delete(entry, AuxiliaryTables)
@@ -132,10 +132,15 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 		// log.Println("childPlace ", x.Id, ": ", childPlace)
 		var t3DPlacements T3DPlacements
 		jsonData := []byte(childPlace.(string))
-		_ = json.Unmarshal(jsonData, &t3DPlacements)
+		if err := json.Unmarshal(jsonData, &t3DPlacements); err != nil {
+			return errors.WithMessage(err, "failed to unmarshal 3d placements")
+		}
 		for _, placement := range t3DPlacements {
-			FillPlacement(placement.(map[string]interface{}), &x.Placements)
+			if err := FillPlacement(placement.(map[string]interface{}), x.Placements); err != nil {
+				return errors.WithMessage(err, "failed to fill placement")
+			}
 		}
 	}
+
 	return nil
 }

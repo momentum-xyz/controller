@@ -17,7 +17,6 @@ import (
 )
 
 const (
-	getUserNameQuery                                = `SELECT name FROM users WHERE id = ?;`
 	queryWorldConfigQuery                           = `SELECT config FROM world_definition WHERE id = ?;`
 	getUserInfoQuery                                = `SELECT name, userTypeId FROM users WHERE id = ?;`
 	getRandomWorldQuery                             = `SELECT id FROM spaces WHERE parentId = 0x00000000000000000000000000000000 AND id != 0x00000000000000000000000000000000;`
@@ -550,18 +549,6 @@ func (DB *Database) UpdateHighFives(sender, target uuid.UUID) error {
 		return errors.WithMessage(err, "failed to exec db")
 	}
 	return nil
-}
-
-func (DB *Database) GetUserName(id uuid.UUID) (string, error) {
-	row := DB.QueryRow(getUserNameQuery, utils.BinId(id))
-	if row.Err() != nil {
-		return "", errors.WithMessage(row.Err(), "failed to query db")
-	}
-	var name string
-	if err := row.Scan(&name); err != nil {
-		return "", errors.WithMessage(err, "failed to scan row")
-	}
-	return name, nil
 }
 
 /*

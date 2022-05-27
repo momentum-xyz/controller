@@ -80,23 +80,20 @@ func BoolFromMap(parametersMap map[string]any, k string, defaultValue bool) bool
 	return defaultValue
 }
 
-func SpaceTypeFromMap(parametersMap map[string]interface{}) uuid.UUID {
+func SpaceTypeFromMap(parametersMap map[string]interface{}) (uuid.UUID, error) {
 	rt, ok := parametersMap["kind"]
 	if !ok {
-		log.Warn("SpaceTypeFromMap: kind not found")
-		return uuid.Nil
+		return uuid.Nil, errors.Errorf("kind not found")
 	}
 	var k string
 	if k, ok = rt.(string); !ok || k == "default" {
-		log.Warn("SpaceTypeFromMap: kind is default")
-		return uuid.Nil
+		return uuid.Nil, errors.Errorf("kind is default")
 	}
 	kind, err := uuid.Parse(k)
 	if err != nil {
-		log.Warnf("SpaceTypeFromMap: kind is not a valid uuid: %s\n", k)
-		return uuid.Nil
+		return uuid.Nil, errors.WithMessage(err, "failed to parse kind")
 	}
-	return kind
+	return kind, nil
 }
 
 func DbToUuid(f interface{}) (uuid.UUID, error) {

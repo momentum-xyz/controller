@@ -4,6 +4,7 @@ import (
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/position"
 	"github.com/momentum-xyz/controller/utils"
+	"github.com/pkg/errors"
 
 	"github.com/google/uuid"
 )
@@ -15,10 +16,13 @@ const (
 
 var log = logger.L()
 
-func FillPlacement(placementMap map[string]interface{}, placements *map[uuid.UUID]position.Algo) {
+func FillPlacement(placementMap map[string]interface{}, placements map[uuid.UUID]position.Algo) error {
 	log.Debug("PLSMAP", placementMap)
 
-	kind := utils.SpaceTypeFromMap(placementMap)
+	kind, err := utils.SpaceTypeFromMap(placementMap)
+	if err != nil {
+		return errors.WithMessage(err, "failed to get space type for map")
+	}
 
 	var par position.Algo
 	algo := "circular"
@@ -39,5 +43,6 @@ func FillPlacement(placementMap map[string]interface{}, placements *map[uuid.UUI
 		par = position.NewHexaSpiral(placementMap)
 	}
 
-	(*placements)[kind] = par
+	placements[kind] = par
+	return nil
 }

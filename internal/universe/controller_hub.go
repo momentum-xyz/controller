@@ -31,8 +31,8 @@ import (
 
 const (
 	defaultDelayForUsersForRemove = 5 * time.Minute
-	selectNodeSettingsIdAndName   = `select ns1.value as id, ns2.value as name from node_settings ns1
-											 join node_settings ns2	where ns1.name = 'id' and ns2.name = 'name';`
+	selectNodeSettingsIdAndName   = `SELECT ns1.value AS id, ns2.value AS name FROM node_settings ns1
+    									JOIN node_settings ns2	WHERE ns1.name = 'id' AND ns2.name = 'name';`
 )
 
 var log = logger.L()
@@ -60,7 +60,13 @@ type ControllerHub struct {
 }
 
 func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder *message.Builder) (*ControllerHub, error) {
-	db := storage.OpenDB(&cfg.MySQL)
+	db, err := storage.OpenDB(&cfg.MySQL)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to init storage")
+	}
+	if err := storage.MigrateDb(db, &cfg.MySQL); err != nil {
+		return nil, errors.WithMessage(err, "failed to migrate db")
+	}
 
 	mqttClient, err := safemqtt.InitMQTTClient(&cfg.MQTT, "worlds_controller-"+uuid.NewString())
 	if err != nil {
@@ -81,7 +87,7 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	}
 
 	deadlock.Opts.DeadlockTimeout = time.Second * 60
-	storage.MigrateDb(hub.DB, &cfg.MySQL)
+
 	go TimeInformer(hub.mqtt)
 
 	// client := influxdb2.NewClient(hub.cfg.Influx.URL, hub.cfg.Influx.TOKEN)
