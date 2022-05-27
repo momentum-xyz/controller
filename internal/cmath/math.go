@@ -54,6 +54,7 @@ func MNan32Vec3() Vec3 {
 		Z: float32(math.NaN()),
 	}
 }
+
 func MNaN32() float32 {
 	return float32(math.NaN())
 }

@@ -2,21 +2,22 @@ package utils
 
 import (
 	"database/sql"
+
 	"github.com/momentum-xyz/controller/internal/logger"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 var log = logger.L()
 
-func LoadRow(rows *sql.Rows) map[string]interface{} {
+func LoadRow(rows *sql.Rows) (map[string]interface{}, error) {
 	if !rows.Next() {
-		return nil // possible bug ?
+		return nil, ErrNotFound // possible bug ?
 	}
 	columns, err := rows.Columns()
 	if err != nil {
-		log.Errorf("failed to load row: %+v", err)
-		return nil
+		return nil, errors.WithMessage(err, "failed to get columns")
 	}
 	count := len(columns)
 	values := make([]interface{}, count)
@@ -26,8 +27,9 @@ func LoadRow(rows *sql.Rows) map[string]interface{} {
 		valuePtrs[i] = &values[i]
 	}
 	if err := rows.Scan(valuePtrs...); err != nil {
-		log.Errorf("failed to scan row: %+v", err)
+		return nil, errors.WithMessage(err, "failed to scan rows")
 	}
+
 	entry := make(map[string]interface{})
 	for i, col := range columns {
 		var v interface{}
@@ -40,7 +42,22 @@ func LoadRow(rows *sql.Rows) map[string]interface{} {
 		}
 		entry[col] = v
 	}
-	return entry
+	return entry, nil
+}
+
+func FromAny[V any](val any, defaultValue V) V {
+	v, ok := val.(V)
+	if ok {
+		return v
+	}
+	return defaultValue
+}
+
+func FromAnyMap[K comparable, V any](amap map[K]any, key K, defaultValue V) V {
+	if val, ok := amap[key]; ok {
+		return FromAny(val, defaultValue)
+	}
+	return defaultValue
 }
 
 func F64FromMap(parametersMap map[string]any, k string, defaultValue float64) float64 {
@@ -82,10 +99,10 @@ func SpaceTypeFromMap(parametersMap map[string]interface{}) uuid.UUID {
 	return kind
 }
 
-func DbToUuid(f interface{}) uuid.UUID {
+func DbToUuid(f interface{}) (uuid.UUID, error) {
 	q, err := uuid.FromBytes([]byte((f).(string)))
 	if err != nil {
-		log.Errorf("DbToUuid: %+v", err)
+		return uuid.Nil, errors.WithMessage(err, "failed to parse uuid")
 	}
-	return q
+	return q, nil
 }

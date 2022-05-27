@@ -7,6 +7,7 @@ package universe
 import (
 	// STD
 	"encoding/json"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	_ "net/http/pprof"
 	"strconv"
 	"sync/atomic"
@@ -22,8 +23,6 @@ import (
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 
-	// Third-party
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -429,7 +428,7 @@ func (wc *WorldController) run() {
 
 // signal about removed ConnectedUsers
 
-func (wc *WorldController) SafeSubscribe(topic string, qos byte, callback func(client mqtt.Client, msg mqtt.Message)) {
+func (wc *WorldController) SafeSubscribe(topic string, qos byte, callback mqtt.MessageHandler) {
 	wc.hub.mqtt.SafeSubscribe(topic, qos, callback)
 }
 

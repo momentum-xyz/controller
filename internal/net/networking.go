@@ -56,6 +56,7 @@ func NewNetworking(cfg *config.Config) *Networking {
 
 	http.HandleFunc("/posbus", n.HandShake)
 	http.HandleFunc("/config/ui-client", n.cfgUIClient)
+
 	return n
 }
 
@@ -177,9 +178,9 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 
 	token := string(handshake.UserToken())
 
-	if err != nil || !auth.VerifyToken(token, n.cfg.Common.IntrospectURL) {
+	if err := auth.VerifyToken(token, n.cfg.Common.IntrospectURL); err != nil {
 		userID := message.DeserializeGUID(handshake.UserId(nil))
-		log.Errorf("error: wrong PreHandShake (invalid token: %v ), aborting connection", userID)
+		log.Errorf("error: wrong PreHandShake (invalid token: %s), aborting connection: %+v", userID, err)
 		return nil, nil, false, nil
 	}
 

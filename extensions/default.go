@@ -12,17 +12,18 @@ func Default() extension.Extension {
 }
 
 // Make sure defaultExtension always implements Extension (compile time error)
-var _ extension.Extension = &defaultExtension{}
+var _ extension.Extension = (*defaultExtension)(nil)
 
 type defaultExtension struct {
 	world extension.WorldController
 }
 
-func (e *defaultExtension) Init() bool {
-	return true
+func (e *defaultExtension) Init() error {
+	return nil
 }
 
-func (e *defaultExtension) Run() {
+func (e *defaultExtension) Run() error {
+	return nil
 }
 
 func (e *defaultExtension) SortSpaces(s []uuid.UUID, t uuid.UUID) {

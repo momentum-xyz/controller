@@ -1,6 +1,7 @@
 package config
 
 import (
+	"github.com/pkg/errors"
 	// Std
 	"io"
 	"os"
@@ -25,6 +26,10 @@ type Config struct {
 	Common   Common   `yaml:"common"`
 }
 
+const configFileName = "config.yaml"
+
+var log = logger.L()
+
 func (x *Config) Init() {
 	x.MQTT.Init()
 	x.MySQL.Init()
@@ -33,10 +38,6 @@ func (x *Config) Init() {
 	x.Influx.Init()
 	x.Common.Init()
 }
-
-const configFileName = "config.yaml"
-
-var log = logger.L()
 
 func defConfig() *Config {
 	var cfg Config
@@ -56,10 +57,6 @@ func readOpts(cfg *Config) {
 	}
 }
 
-func processError(err error) {
-	log.Fatal(err)
-}
-
 func fileExists(filename string) bool {
 	info, err := os.Stat(filename)
 	if os.IsNotExist(err) {
@@ -68,29 +65,28 @@ func fileExists(filename string) bool {
 	return !info.IsDir()
 }
 
-func readFile(cfg *Config) {
+func readFile(cfg *Config) error {
 	if !fileExists(configFileName) {
-		return
+		return nil
 	}
+
 	f, err := os.Open(configFileName)
 	if err != nil {
-		processError(err)
+		return errors.WithMessage(err, "failed to open file")
 	}
 	defer f.Close()
-	decoder := yaml.NewDecoder(f)
-	err = decoder.Decode(cfg)
-	if err != nil {
+
+	if err := yaml.NewDecoder(f).Decode(cfg); err != nil {
 		if err != io.EOF {
-			processError(err)
+			return errors.WithMessage(err, "failed to decode file")
 		}
 	}
+
+	return nil
 }
 
-func readEnv(cfg *Config) {
-	err := envconfig.Process("", cfg)
-	if err != nil {
-		processError(err)
-	}
+func readEnv(cfg *Config) error {
+	return envconfig.Process("", cfg)
 }
 
 func prettyPrint(cfg *Config) {
@@ -102,8 +98,12 @@ func prettyPrint(cfg *Config) {
 func GetConfig() *Config {
 	cfg := defConfig()
 
-	readFile(cfg)
-	readEnv(cfg)
+	if err := readFile(cfg); err != nil {
+		log.Fatalf("GetConfig: failed to read file: %+v", err)
+	}
+	if err := readEnv(cfg); err != nil {
+		log.Fatalf("GetConfig: failed to read env: %+v", err)
+	}
 	readOpts(cfg)
 
 	logger.SetLevel(zapcore.Level(cfg.Settings.LogLevel))

@@ -59,8 +59,14 @@ type ControllerHub struct {
 	usersForRemoveWithDelay *utils.SyncMap[uuid.UUID, utils.Unique[context.CancelFunc]]
 }
 
-func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder *message.Builder) *ControllerHub {
+func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder *message.Builder) (*ControllerHub, error) {
 	db := storage.OpenDB(&cfg.MySQL)
+
+	mqttClient, err := safemqtt.InitMQTTClient(&cfg.MQTT, "worlds_controller-"+uuid.NewString())
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to init mqtt client")
+	}
+
 	hub := &ControllerHub{
 		cfg:                     cfg,
 		Worlds:                  make(map[uuid.UUID]*WorldController),
@@ -69,7 +75,7 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 		WorldStorage:            world.NewStorage(*db.DB),
 		UserStorage:             user.NewStorage(*db.DB),
 		net:                     networking,
-		mqtt:                    safemqtt.InitMQTTClient(&cfg.MQTT, "worlds_controller-"+uuid.NewString()),
+		mqtt:                    mqttClient,
 		msgBuilder:              msgBuilder,
 		usersForRemoveWithDelay: utils.NewSyncMap[uuid.UUID, utils.Unique[context.CancelFunc]](),
 	}
@@ -89,7 +95,7 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	}
 	hub.mqtt.SafeSubscribe("updates/spaces/changed", 1, hub.ChangeHandler)
 
-	return hub
+	return hub, nil
 }
 
 func (ch *ControllerHub) RemoveGuestsWithDelay() {

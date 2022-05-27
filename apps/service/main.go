@@ -31,7 +31,7 @@ var log = logger.L()
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(errors.WithMessage(err, "error running"))
+		log.Fatal(errors.WithMessage(err, "failed to run service"))
 	}
 }
 
@@ -42,7 +42,10 @@ func run() error {
 
 	networking := net.NewNetworking(cfg)
 	msgBuilder := message.InitBuilder(20, 1024*32)
-	hub := universe.NewControllerHub(cfg, networking, msgBuilder)
+	hub, err := universe.NewControllerHub(cfg, networking, msgBuilder)
+	if err != nil {
+		return errors.WithMessage(err, "failed to create controller hub")
+	}
 
 	ExtensionLoader = extension.NewLoader()
 	// ExtensionLoader.Set("kusama", extensions.NewKusama)

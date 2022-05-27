@@ -130,15 +130,16 @@ func (c *Connection) EnableWriting() {
 }
 
 func (c *Connection) StartWritePump() {
+	pingTicker := time.NewTicker(pingPeriod)
 	defer func() {
 		c.OnPumpEnd()
+		pingTicker.Stop()
 		// c.conn.Close()
 		log.Info("End of IO pump")
 	}()
 
 	log.Info("Starting WritePump")
 
-	pingTicker := time.NewTicker(pingPeriod)
 	// send goroutine
 	for {
 		select {
@@ -147,17 +148,16 @@ func (c *Connection) StartWritePump() {
 				c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
 					log.Error(err)
-					return
 				}
-			} else if c.canWrite.Get() {
+				return
+			}
+			if c.canWrite.Get() {
 				for c.buffer.Length() > 0 {
-					err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage))
-					if err != nil {
+					if err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage)); err != nil {
 						return
 					}
 				}
-				err := c.SendDirectly(message)
-				if err != nil {
+				if err := c.SendDirectly(message); err != nil {
 					return
 				}
 			} else {
@@ -175,8 +175,7 @@ func (c *Connection) StartWritePump() {
 			}
 			if c.canWrite.Get() {
 				for c.buffer.Length() > 0 {
-					err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage))
-					if err != nil {
+					if err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage)); err != nil {
 						return
 					}
 				}
@@ -198,10 +197,19 @@ func (c *Connection) Send(m *websocket.PreparedMessage) {
 }
 
 func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
-	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-	err := c.conn.WritePreparedMessage(m)
-	if err != nil {
-		log.Errorf("error pushing message: %v", err)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.closed {
+		return nil
 	}
-	return err
+
+	if err := c.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+		return errors.WithMessage(err, "failed to set write deadline")
+	}
+	if err := c.conn.WritePreparedMessage(m); err != nil {
+		return errors.WithMessage(err, "failed to write prepared message")
+	}
+
+	return nil
 }

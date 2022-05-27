@@ -30,12 +30,12 @@ type hexaSpiral struct {
 
 func NewHexaSpiral(parameterMap map[string]interface{}) Algo {
 	return &hexaSpiral{
-		Angle:            utils.F64FromMap(parameterMap, "angle", hexaSpiralAngleDefaultValue),
-		Vshift:           utils.F64FromMap(parameterMap, "Vshift", hexaSpiralVShiftDefaultValue),
-		Rspace:           utils.F64FromMap(parameterMap, "Rspace", hexaSpiralRSpaceDefaultValue),
-		RandDisplacement: utils.F64FromMap(parameterMap, "RandDisplacement", hexaSpiralRandDisplacementDefaultValue),
-		DrawCenter:       utils.BoolFromMap(parameterMap, "DrawCenter", hexaSpiralDrawCenterDefaultValue),
-		Scatter:          utils.BoolFromMap(parameterMap, "Scatter", hexaSpiralDrawCenterDefaultValue),
+		Angle:            utils.FromAnyMap(parameterMap, "angle", hexaSpiralAngleDefaultValue),
+		Vshift:           utils.FromAnyMap(parameterMap, "Vshift", hexaSpiralVShiftDefaultValue),
+		Rspace:           utils.FromAnyMap(parameterMap, "Rspace", hexaSpiralRSpaceDefaultValue),
+		RandDisplacement: utils.FromAnyMap(parameterMap, "RandDisplacement", hexaSpiralRandDisplacementDefaultValue),
+		DrawCenter:       utils.FromAnyMap(parameterMap, "DrawCenter", hexaSpiralDrawCenterDefaultValue),
+		Scatter:          utils.FromAnyMap(parameterMap, "Scatter", hexaSpiralDrawCenterDefaultValue),
 	}
 }
 
@@ -67,7 +67,6 @@ func (*hexaSpiral) Name() string {
 }
 
 func getHexPosition(i int, dc bool, scatter bool) (float64, float64) {
-
 	j := i
 	if !dc {
 		j++

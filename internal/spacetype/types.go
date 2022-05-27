@@ -2,13 +2,13 @@ package spacetype
 
 import (
 	"encoding/json"
-	"errors"
 
 	"github.com/momentum-xyz/controller/internal/position"
 	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/controller/utils"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
 )
 
@@ -112,12 +112,20 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 
 	x.AssetId = uuid.Nil
 	if AssetId, ok := entry["asset"]; ok && AssetId != nil {
-		x.AssetId = utils.DbToUuid(AssetId)
+		uid, err := utils.DbToUuid(AssetId)
+		if err != nil {
+			return errors.WithMessage(err, "failed to parse asset id")
+		}
+		x.AssetId = uid
 	}
 
 	x.InfoUIId = uuid.Nil
 	if InfoUIId, ok := entry["infoui_id"]; ok && InfoUIId != nil {
-		x.InfoUIId = utils.DbToUuid(InfoUIId)
+		uid, err := utils.DbToUuid(InfoUIId)
+		if err != nil {
+			return errors.WithMessage(err, "failed to parse info ui id")
+		}
+		x.InfoUIId = uid
 	}
 
 	if childPlace, ok := entry[ChildPlacement]; ok {

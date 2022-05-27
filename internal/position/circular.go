@@ -21,9 +21,9 @@ type circular struct {
 
 func NewCircular(parameterMap map[string]interface{}) Algo {
 	return &circular{
-		Angle:  utils.F64FromMap(parameterMap, "angle", circularAngleDefaultValue),
-		R:      utils.F64FromMap(parameterMap, "R", circularRadiusDefaultValue),
-		VShift: utils.F64FromMap(parameterMap, "Vshift", circularVShiftDefaultValue),
+		Angle:  utils.FromAnyMap(parameterMap, "angle", circularAngleDefaultValue),
+		R:      utils.FromAnyMap(parameterMap, "R", circularRadiusDefaultValue),
+		VShift: utils.FromAnyMap(parameterMap, "Vshift", circularVShiftDefaultValue),
 	}
 }
 
