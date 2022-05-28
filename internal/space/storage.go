@@ -45,7 +45,7 @@ type storage struct {
 func (s *storage) QuerySpaceAttributesById(id uuid.UUID) ([]spaceAttribute, error) {
 	rows, err := s.db.Query(selectSpaceAttributesById, utils.BinId(id))
 	if err != nil {
-		return nil, err
+		return nil, errors.WithMessage(err, "failed to query db")
 	}
 	defer rows.Close()
 

@@ -326,7 +326,7 @@ func (wc *WorldController) InsertWorldDynamicMembership(id uuid.UUID) {
 	go wc.UpdateOnline()
 }
 
-func (wc *WorldController) PositionRelativeToAbsolute(spaceID uuid.UUID, v cmath.Vec3) cmath.Vec3 {
+func (wc *WorldController) PositionRelativeToAbsolute(spaceID uuid.UUID, v cmath.Vec3) (cmath.Vec3, error) {
 	v2, err := wc.spaces.GetPos(spaceID)
 	if err != nil {
 		log.Warnf("error: %+v", err)

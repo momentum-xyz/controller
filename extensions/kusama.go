@@ -17,6 +17,7 @@ import (
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
+	"github.com/momentum-xyz/controller/internal/mqtt"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
@@ -521,13 +522,13 @@ func (ksm *Kusama) Run() error {
 		return errors.WithMessage(err, "failed to load blocks")
 	}
 
-	ksm.world.SafeSubscribe("harvester/kusama/block-creation-event", 2, LogMQTTMessageHandler("block creation", ksm.BlockCreationCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/block-finalized-event", 2, LogMQTTMessageHandler("block finalized", ksm.BlockFinalizationCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/slash-event", 2, LogMQTTMessageHandler("slash", ksm.SlashCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/reward-event", 2, LogMQTTMessageHandler("reward", ksm.RewardCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/era", 2, LogMQTTMessageHandler("era", ksm.EraCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/session", 2, LogMQTTMessageHandler("session", ksm.SessionCallback))
-	ksm.world.SafeSubscribe("updates/events/changed", 2, LogMQTTMessageHandler("changed", ksm.SpaceChangedCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/block-creation-event", 2, safemqtt.LogMQTTMessageHandler("block creation", ksm.BlockCreationCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/block-finalized-event", 2, safemqtt.LogMQTTMessageHandler("block finalized", ksm.BlockFinalizationCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/slash-event", 2, safemqtt.LogMQTTMessageHandler("slash", ksm.SlashCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/reward-event", 2, safemqtt.LogMQTTMessageHandler("reward", ksm.RewardCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/era", 2, safemqtt.LogMQTTMessageHandler("era", ksm.EraCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/session", 2, safemqtt.LogMQTTMessageHandler("session", ksm.SessionCallback))
+	ksm.world.SafeSubscribe("updates/events/changed", 2, safemqtt.LogMQTTMessageHandler("events changed", ksm.SpaceChangedCallback))
 
 	time.Sleep(time.Duration(1<<63 - 1))
 

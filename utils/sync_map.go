@@ -35,3 +35,10 @@ func (m *SyncMap[K, V]) Remove(k K) {
 
 	delete(m.Data, k)
 }
+
+func (m *SyncMap[K, V]) Purge() {
+	m.Mu.Lock()
+	defer m.Mu.Unlock()
+
+	m.Data = make(map[K]V)
+}

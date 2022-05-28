@@ -44,7 +44,7 @@ type node struct {
 
 type ControllerHub struct {
 	cfg          *config.Config
-	Worlds       map[uuid.UUID]*WorldController
+	Worlds       *utils.SyncMap[uuid.UUID, *WorldController]
 	node         node
 	mu           deadlock.RWMutex
 	DB           *storage.Database
@@ -75,7 +75,7 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 
 	hub := &ControllerHub{
 		cfg:                     cfg,
-		Worlds:                  make(map[uuid.UUID]*WorldController),
+		Worlds:                  utils.NewSyncMap[uuid.UUID, *WorldController](),
 		DB:                      db,
 		SpaceStorage:            space.NewStorage(*db.DB),
 		WorldStorage:            world.NewStorage(*db.DB),
@@ -93,22 +93,31 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	// client := influxdb2.NewClient(hub.cfg.Influx.URL, hub.cfg.Influx.TOKEN)
 	// hub.influx = client.WriteAPIBlocking(hub.cfg.Influx.ORG, hub.cfg.Influx.BUCKET)
 
-	hub.GetNodeSettings()
-	hub.RemoveGuestsWithDelay()
-
-	for _, WorldID := range hub.WorldStorage.GetWorlds() {
-		hub.AddWorldController(WorldID)
+	if err := hub.GetNodeSettings(); err != nil {
+		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to get node settings"))
 	}
-	hub.mqtt.SafeSubscribe("updates/spaces/changed", 1, hub.ChangeHandler)
+	if err := hub.RemoveGuestsWithDelay(); err != nil {
+		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to remove guests with delay"))
+	}
+
+	worlds, err := hub.WorldStorage.GetWorlds()
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to get worlds")
+	}
+	for _, worldID := range worlds {
+		if _, err := hub.AddWorldController(worldID); err != nil {
+			return nil, errors.WithMessagef(err, "failed to add world controller: %s", worldID)
+		}
+	}
+	hub.mqtt.SafeSubscribe("updates/spaces/changed", 1, safemqtt.LogMQTTMessageHandler("spaces changed", hub.ChangeHandler)
 
 	return hub, nil
 }
 
-func (ch *ControllerHub) RemoveGuestsWithDelay() {
+func (ch *ControllerHub) RemoveGuestsWithDelay() error {
 	guests, err := ch.DB.GetUsersIDsByType(ch.guestUserTypeId)
 	if err != nil {
-		log.Error(errors.WithMessage(errors.WithMessage(err, "failed to get guests"), "failed to remove guests"))
-		return
+		return errors.WithMessage(err, "failed to get guests")
 	}
 	for i := range guests {
 		ch.RemoveUserWithDelay(guests[i], defaultDelayForUsersForRemove)
@@ -150,28 +159,37 @@ func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) 
 	}()
 }
 
-func (ch *ControllerHub) ChangeHandler(client mqtt.Client, message mqtt.Message) {
-	id, _ := uuid.ParseBytes(message.Payload())
+func (ch *ControllerHub) ChangeHandler(client mqtt.Client, message mqtt.Message) error {
+	id, err := uuid.ParseBytes(message.Payload())
+	if err != nil {
+		return errors.WithMessage(err, "failed to parse id")
+	}
 	log.Debug("Update for:", id)
-	ch.mu.RLock()
-	defer ch.mu.RUnlock()
-	for u, controller := range ch.Worlds {
+
+	ch.Worlds.Mu.Lock()
+	defer ch.Worlds.Mu.Unlock()
+
+	for u, controller := range ch.Worlds.Data {
 		log.Debug("Check update in world:", u)
-		_, ok := controller.spaces.GetPresent(id)
-		if ok {
+		if _, ok := controller.spaces.GetPresent(id); ok {
 			log.Debug("Check update found!")
 			controller.updateSpace <- id
 		}
 	}
 }
 
+// TODO: this method never ends
 func (ch *ControllerHub) NetworkRunner() {
 	log.Info("Started NetworkRuner")
 	for {
 		log.Info("ControllerHub::NetworkRunner waiting for successful handshake")
 		handshake := <-ch.net.HandshakeChan
 		log.Info("ControllerHub::NetworkRunner received successful handshake")
-		go ch.spawnUser(handshake)
+		go func() {
+			if err := ch.spawnUser(handshake); err != nil {
+				log.Error(errors.WithMessage(err, "NetworkRunner: failed to spawn user"))
+			}
+		}()
 	}
 }
 
@@ -182,37 +200,49 @@ func (ch *ControllerHub) WriteInfluxPoint(point *influx_write.Point) error {
 	// return err
 }
 
+// TODO: this method never ends
 func (ch *ControllerHub) UpdateTotalUsers() {
 	tag := ch.node.name + " // " + ch.node.id.String()
-	numUsers := 0
 	for range time.Tick(time.Minute) {
-		numUsers = ch.UserStorage.SelectUserCount()
+		numUsers, err := ch.UserStorage.SelectUserCount()
+		if err != nil {
+			log.Warn(errors.WithMessage(err, "UpdateTotalUsers: failed to get users count"))
+			continue
+		}
 		p := influx_db2.NewPoint(
 			"ConnectedUsers", map[string]string{"node": tag}, map[string]interface{}{"count": numUsers}, time.Now(),
 		)
-		ch.WriteInfluxPoint(p)
+		if err := ch.WriteInfluxPoint(p); err != nil {
+			log.Warn(errors.WithMessage(err, "UpdateTotalUsers: failed to write influx point"))
+		}
 	}
 }
 
-func (ch *ControllerHub) GetNodeSettings() {
+func (ch *ControllerHub) GetNodeSettings() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
+
 	rows, err := ch.DB.QueryContext(ctx, selectNodeSettingsIdAndName)
 	if err != nil {
-		log.Info("could not get node settings", err)
-		return
+		return errors.WithMessage(err, "failed to query db")
 	}
 	defer rows.Close()
+
 	var n node
 	if rows.Next() {
-		err = rows.Scan(&n.id, &n.name)
-		if err != nil {
-			log.Info("could not parse node settings", err)
-			return
+		if err := rows.Scan(&n.id, &n.name); err != nil {
+			return errors.WithMessage(err, "failed to scan rows")
 		}
 		ch.node = n
 	}
-	ch.guestUserTypeId = ch.DB.GetGuestUserTypeId("Temporary User")
+
+	guestUserType, err := ch.DB.GetGuestUserTypeId("Temporary User")
+	if err != nil {
+		return errors.WithMessage(err, "failed to get guest user type")
+	}
+	ch.guestUserTypeId = guestUserType
+
+	return nil
 }
 
 func (ch *ControllerHub) GetUserSpawnPoint(uid uuid.UUID, URL *url.URL) (uuid.UUID, cmath.Vec3, error) {
@@ -221,49 +251,55 @@ func (ch *ControllerHub) GetUserSpawnPoint(uid uuid.UUID, URL *url.URL) (uuid.UU
 
 	if err != nil {
 		log.Info("Spawn flow: Pos was wrong", uid)
-		return uuid.Nil, cmath.DefaultPosition(), errors.New("no place to spawn")
+		return uuid.Nil, cmath.DefaultPosition(), errors.WithMessage(err, "no place to spawn")
 	}
 
 	// logger.Logln(1, spaceId, worldId)
 	log.Info("Spawn flow: Into the calcs", uid)
-	v2 := ch.GetWorldController(worldID).PositionRelativeToAbsolute(spaceId, v)
+	wc, err := ch.GetWorldController(worldID)
+	if err != nil {
+		return uuid.Nil, cmath.DefaultPosition(), errors.WithMessage(err, "failed to get world controller")
+	}
+	v2, err := wc.PositionRelativeToAbsolute(spaceId, v)
+	if err != nil {
+		return uuid.Nil, cmath.DefaultPosition(), errors.WithMessage(err, "failed to get relative position")
+	}
+
 	log.Info("Spawn flow: Got absolute", uid)
 	return worldID, v2, nil
 }
 
-func (ch *ControllerHub) GetWorldController(worldID uuid.UUID) *WorldController {
-	ch.mu.Lock()
-	defer ch.mu.Unlock()
-	if wc, ok := ch.Worlds[worldID]; ok {
-		return wc
+func (ch *ControllerHub) GetWorldController(worldID uuid.UUID) (*WorldController, error) {
+	if wc, ok := ch.Worlds.Load(worldID); ok {
+		return wc, nil
 	}
-
 	return ch.AddWorldController(worldID)
 }
 
-func (ch *ControllerHub) AddWorldController(worldID uuid.UUID) *WorldController {
+func (ch *ControllerHub) AddWorldController(worldID uuid.UUID) (*WorldController, error) {
 	wc, err := newWorldController(worldID, ch, ch.msgBuilder)
 	if err != nil {
-		log.Error("error when creating new world world: %v", err)
-		return nil
+		return nil, errors.WithMessage(err, "failed to create new world controller")
 	}
-	ch.Worlds[worldID] = wc
+	ch.Worlds.Store(worldID, wc)
 	go wc.run()
 
-	return wc
+	return wc, nil
 }
 
 func (ch *ControllerHub) spawnUserAt(
 	connection *socket.Connection, userID, sessionID, worldID uuid.UUID, pos cmath.Vec3,
-) {
-	wc := ch.GetWorldController(worldID)
-	if wc == nil {
-		log.Error("Spawn flow: error WC", userID)
-		return
+) error {
+	wc, err := ch.GetWorldController(worldID)
+	if err != nil {
+		return errors.WithMessage(err, "failed to get world controller")
 	}
 	log.Info("Spawn flow: got WC", userID)
 	log.Info("Spawning user %s on %s:[%f,%f,%f]", userID, wc.ID, pos.X, pos.Y, pos.Z)
-	name, typeId := ch.DB.GetUserInfo(userID)
+	name, typeId, err := ch.DB.GetUserInfo(userID)
+	if err != nil {
+		return errors.WithMessage(err, "failed to get user info")
+	}
 
 	wc.registerUser <- &User{
 		ID:         userID,
@@ -276,18 +312,18 @@ func (ch *ControllerHub) spawnUserAt(
 	}
 
 	log.Info("Sent Reg")
+	return nil
 }
 
-func (ch *ControllerHub) spawnUser(data *net.SuccessfulHandshakeData) {
+func (ch *ControllerHub) spawnUser(data *net.SuccessfulHandshakeData) error {
 	log.Info("Spawn flow: request", data.UserID)
 	worldID, pos, err := ch.GetUserSpawnPoint(data.UserID, data.URL)
 	if err != nil {
-		log.Error("Spawn flow: error 1", data.UserID)
-		return
+		return errors.WithMessage(err, "failed to get user spawn position")
 	}
 	log.Info("Spawn flow: got point", data.UserID)
 
-	ch.spawnUserAt(data.Connection, data.UserID, data.SessionID, worldID, pos)
+	return ch.spawnUserAt(data.Connection, data.UserID, data.SessionID, worldID, pos)
 	// worldID, err := uuid.Parse("d83670c7-a120-47a4-892d-f9ec75604f74")
 	// if err != nil {
 	// 	return

@@ -2,6 +2,7 @@ package universe
 
 import (
 	"errors"
+	"github.com/momentum-xyz/controller/utils"
 	"time"
 
 	"github.com/momentum-xyz/controller/internal/cmath"
@@ -10,12 +11,10 @@ import (
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	"github.com/google/uuid"
-	"github.com/sasha-s/go-deadlock"
 )
 
 type LoadedSpaces struct {
-	spaces       map[uuid.UUID]*Space
-	lock         deadlock.RWMutex
+	spaces       *utils.SyncMap[uuid.UUID, *Space]
 	spaceStorage space.Storage
 	msgBuilder   *message.Builder
 	world        *WorldController
@@ -31,7 +30,7 @@ type LoadedSpaces struct {
 
 func newSpaces(wc *WorldController, spaceStorage space.Storage, msgBuilder *message.Builder) *LoadedSpaces {
 	obj := new(LoadedSpaces)
-	obj.spaces = make(map[uuid.UUID]*Space)
+	obj.spaces = utils.NewSyncMap[uuid.UUID, *Space]()
 	obj.spaceStorage = spaceStorage
 	obj.msgBuilder = msgBuilder
 	obj.world = wc
@@ -40,34 +39,26 @@ func newSpaces(wc *WorldController, spaceStorage space.Storage, msgBuilder *mess
 }
 
 func (ls *LoadedSpaces) Num() int {
-	ls.lock.RLock()
-	defer ls.lock.RUnlock()
-	return len(ls.spaces)
+	ls.spaces.Mu.Lock()
+	defer ls.spaces.Mu.Unlock()
+
+	return len(ls.spaces.Data)
 }
 
 func (ls *LoadedSpaces) Add(obj *Space) {
-	ls.lock.Lock()
-	ls.spaces[obj.id] = obj
-	ls.lock.Unlock()
+	ls.spaces.Store(obj.id, obj)
 }
 
-func (ls *LoadedSpaces) Get(spaceId uuid.UUID) *Space {
-	ls.lock.RLock()
-	defer ls.lock.RUnlock()
-	return ls.spaces[spaceId]
+func (ls *LoadedSpaces) Get(spaceId uuid.UUID) (*Space, bool) {
+	return ls.spaces.Load(spaceId)
 }
 
 func (ls *LoadedSpaces) GetPresent(spaceId uuid.UUID) (*Space, bool) {
-	ls.lock.RLock()
-	s, ok := ls.spaces[spaceId]
-	ls.lock.RUnlock()
-	return s, ok
+	return ls.spaces.Load(spaceId)
 }
 
 func (ls *LoadedSpaces) Delete(spaceId uuid.UUID) {
-	ls.lock.Lock()
-	delete(ls.spaces, spaceId)
-	ls.lock.Unlock()
+	ls.spaces.Remove(spaceId)
 }
 
 func (ls *LoadedSpaces) FindClosest(pos *cmath.Vec3) (uuid.UUID, cmath.Vec3) {
@@ -76,10 +67,11 @@ func (ls *LoadedSpaces) FindClosest(pos *cmath.Vec3) (uuid.UUID, cmath.Vec3) {
 		id uuid.UUID
 		v  cmath.Vec3
 	)
-	ls.lock.RLock()
-	defer ls.lock.RUnlock()
 
-	for id0, space := range ls.spaces {
+	ls.spaces.Mu.Lock()
+	defer ls.spaces.Mu.Unlock()
+
+	for id0, space := range ls.spaces.Data {
 		if space.isDynamic {
 			continue
 		}
@@ -111,7 +103,7 @@ func (ls *LoadedSpaces) Unload(spaceId uuid.UUID) {
 	msg := posbus.NewRemoveStaticObjectsMsg(1)
 	msg.SetObject(0, s.id)
 	s.world.Broadcast(msg.WebsocketMessage())
-	log.Info("unloaded: ", s.id, len(ls.spaces))
+	log.Info("unloaded: ", s.id, ls.Num())
 }
 
 func (ls *LoadedSpaces) LoadFromEntry(req *RegRequest, entry map[string]interface{}) *Space {
@@ -121,7 +113,6 @@ func (ls *LoadedSpaces) LoadFromEntry(req *RegRequest, entry map[string]interfac
 
 	log.Infof("load request: %s", req.id)
 
-	var err error
 	tm := time.Now()
 	obj := newSpace(ls.spaceStorage, ls.msgBuilder)
 	obj.theta = req.theta
@@ -129,23 +120,27 @@ func (ls *LoadedSpaces) LoadFromEntry(req *RegRequest, entry map[string]interfac
 	obj.world = ls.world
 	ls.Time1 += time.Since(tm)
 	// flag := true
+
 	tm = time.Now()
 	obj.SetPosition(req.pos)
 	ls.Time2 += time.Since(tm)
+
 	tm = time.Now()
-	err = obj.UpdateMetaFromMap(entry)
-	if err != nil {
+	if err := obj.UpdateMetaFromMap(entry); err != nil {
 		return nil
 	}
 	obj.initialized = true
 	ls.Time3 += time.Since(tm)
+
 	tm = time.Now()
 	ls.Add(obj)
 	ls.Time4 += time.Since(tm)
+
 	obj.Init()
 	if obj.id == ls.world.ID {
 		log.Info("Structure for the world "+obj.id.String()+" is loaded", ls.MetaTime, ls.Time1, ls.Time2, ls.Time3)
 	}
+
 	return obj
 }
 
@@ -155,9 +150,8 @@ func (ls *LoadedSpaces) Load(req *RegRequest) *Space {
 	}
 
 	log.Infof("load request: %s", req.id)
-	tm1 := time.Now()
 
-	var err error
+	tm1 := time.Now()
 	tm := time.Now()
 	obj := newSpace(ls.spaceStorage, ls.msgBuilder)
 	obj.theta = req.theta
@@ -165,20 +159,22 @@ func (ls *LoadedSpaces) Load(req *RegRequest) *Space {
 	obj.world = ls.world
 	ls.Time1 += time.Since(tm)
 	// flag := true
+
 	tm = time.Now()
 	obj.SetPosition(req.pos)
 	ls.Time2 += time.Since(tm)
+
 	tm = time.Now()
-	err = obj.UpdateMeta()
-	if err != nil {
-		// flag = false
+	if err := obj.UpdateMeta(); err != nil {
 		return nil
 	}
 	obj.initialized = true
 	ls.Time3 += time.Since(tm)
+
 	tm = time.Now()
 	ls.Add(obj)
 	ls.Time4 += time.Since(tm)
+
 	obj.Init()
 	if obj.id == ls.world.ID {
 		log.Infof(
@@ -188,13 +184,14 @@ func (ls *LoadedSpaces) Load(req *RegRequest) *Space {
 			ls.Time2, ls.Time3,
 		)
 	}
+
 	return obj
 }
 
 func (ls *LoadedSpaces) GetPos(id uuid.UUID) (cmath.Vec3, error) {
 	space, ok := ls.GetPresent(id)
 	if !ok {
-		return cmath.Vec3{}, errors.New("no space to query pos")
+		return cmath.MNan32Vec3(), errors.New("no space to query pos")
 	}
 	return space.position, nil
 }

@@ -12,9 +12,8 @@ import (
 )
 
 type ConnectedUsers struct {
-	users     map[uuid.UUID]*User
-	goneUsers map[uuid.UUID]bool
-	lock      deadlock.RWMutex
+	users     *utils.SyncMap[uuid.UUID, *User]
+	goneUsers *utils.SyncMap[uuid.UUID, struct{}]
 	world     *WorldController
 	// Inbound messages from the users.
 	broadcast chan *websocket.PreparedMessage
@@ -27,8 +26,8 @@ type ConnectedUsers struct {
 
 func NewUsers(world *WorldController) *ConnectedUsers {
 	obj := new(ConnectedUsers)
-	obj.users = make(map[uuid.UUID]*User)
-	obj.goneUsers = make(map[uuid.UUID]bool)
+	obj.users = utils.NewSyncMap[uuid.UUID, *User]()
+	obj.goneUsers = utils.NewSyncMap[uuid.UUID, struct{}]()
 	obj.world = world
 	obj.broadcast = make(chan *websocket.PreparedMessage, 1000)
 	go utils.ChanMonitor("users.bcast", obj.broadcast, 3*time.Second)
@@ -36,6 +35,7 @@ func NewUsers(world *WorldController) *ConnectedUsers {
 	return obj
 }
 
+// TODO: this method never ends
 func (cu *ConnectedUsers) Run() {
 	ticker := time.NewTicker(500 * time.Millisecond)
 	defer ticker.Stop()
@@ -51,7 +51,6 @@ func (cu *ConnectedUsers) Run() {
 			// fmt.Println(color.Red, "Ticker", color.Reset)
 			go cu.BroadcastUsersUpdate()
 		}
-
 	}
 }
 
@@ -60,41 +59,34 @@ func (cu *ConnectedUsers) Broadcast(message *websocket.PreparedMessage) {
 }
 
 func (cu *ConnectedUsers) Get(id uuid.UUID) (*User, bool) {
-	cu.lock.RLock()
-	up, ok := cu.users[id]
-	cu.lock.RUnlock()
-	return up, ok
+	return cu.users.Load(id)
 }
 
 func (cu *ConnectedUsers) Add(u *User) {
-	cu.lock.Lock()
-	cu.users[u.ID] = u
-	cu.lock.Unlock()
+	cu.users.Store(u.ID, u)
 }
 
 func (cu *ConnectedUsers) UserLeft(userId uuid.UUID) {
-	cu.lock.Lock()
-	cu.goneUsers[userId] = true
-	cu.lock.Unlock()
+	cu.goneUsers.Store(userId, struct{}{})
 	go cu.world.UpdateOnline()
 }
 
 func (cu *ConnectedUsers) PerformBroadcast(message *websocket.PreparedMessage) {
-	cu.lock.RLock()
-	for _, clnt := range cu.users {
+	cu.users.Mu.Lock()
+	defer cu.users.Mu.Unlock()
+
+	for _, clnt := range cu.users.Data {
 		clnt.connection.Send(message)
 	}
-	cu.lock.RUnlock()
 }
+
 func (cu *ConnectedUsers) BroadcastDisconnectedUsers() {
-	var goneUsersIds []uuid.UUID
-	cu.lock.RLock()
-	for id, isGone := range cu.goneUsers {
-		if isGone {
-			goneUsersIds = append(goneUsersIds, id)
-		}
+	cu.goneUsers.Mu.Lock()
+	goneUsersIds := make([]uuid.UUID, 0, len(cu.goneUsers.Data))
+	for id := range cu.goneUsers.Data {
+		goneUsersIds = append(goneUsersIds, id)
 	}
-	cu.lock.RUnlock()
+	cu.goneUsers.Mu.Unlock()
 
 	ng := len(goneUsersIds)
 	if ng > 0 {
@@ -106,26 +98,26 @@ func (cu *ConnectedUsers) BroadcastDisconnectedUsers() {
 		}
 		cu.positionLock.Unlock()
 		cu.Broadcast(msg.WebsocketMessage())
-		cu.goneUsers = make(map[uuid.UUID]bool)
+		cu.goneUsers.Purge()
 	}
 }
 
 func (cu *ConnectedUsers) BroadcastPositions() {
 	flag := false
-	cu.lock.RLock()
-	numClients := len(cu.users)
+	cu.users.Mu.Lock()
+	numClients := len(cu.users.Data)
 	msg := posbus.NewUserPositionsMsg(numClients)
 	if numClients > 0 {
 		flag = true
 		i := 0
 		cu.positionLock.Lock()
-		for _, clnt := range cu.users {
+		for _, clnt := range cu.users.Data {
 			msg.SetPosition(i, clnt.posbuf)
 			i++
 		}
 		cu.positionLock.Unlock()
 	}
-	cu.lock.RUnlock()
+	cu.users.Mu.Unlock()
 	if flag {
 		cu.Broadcast(msg.WebsocketMessage())
 	}
@@ -138,26 +130,25 @@ func (cu *ConnectedUsers) BroadcastUsersUpdate() {
 }
 
 func (cu *ConnectedUsers) Num() int {
-	cu.lock.RLock()
-	n := len(cu.users)
-	cu.lock.RUnlock()
-	return n
+	cu.users.Mu.Lock()
+	defer cu.users.Mu.Unlock()
+
+	return len(cu.users.Data)
 }
 
 func (cu *ConnectedUsers) Delete(id uuid.UUID) {
-	cu.lock.Lock()
-	delete(cu.users, id)
-	cu.lock.Unlock()
+	cu.users.Remove(id)
 }
 
 func (cu *ConnectedUsers) GetOnSpace(spaceId uuid.UUID) []*User {
-	cu.lock.RLock()
+	cu.users.Mu.Lock()
+	defer cu.users.Mu.Unlock()
+
 	ul := make([]*User, 0)
-	for _, u := range cu.users {
+	for _, u := range cu.users.Data {
 		if u.currentSpace.Load().(uuid.UUID) == spaceId {
 			ul = append(ul, u)
 		}
 	}
-	cu.lock.RUnlock()
 	return ul
 }
