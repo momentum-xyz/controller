@@ -110,11 +110,11 @@ func (c *Connection) StartReadPump() {
 					return
 				}
 			}
-			log.Errorf("error: reading message fron connection: %v", err)
+			log.Errorf("Connection: StartReadPump: failed to read message fron connection: %v", err)
 			break
 		}
 		if messageType != websocket.BinaryMessage {
-			log.Error("error: wrong incoming message type")
+			log.Errorf("Connection: StartReadPump: wrong incoming message type: %d", messageType)
 		} else {
 			c.OnReceive(posbus.MsgFromBytes(message))
 		}
@@ -147,7 +147,7 @@ func (c *Connection) StartWritePump() {
 			if !ok {
 				c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-					log.Error(err)
+					log.Warn(errors.WithMessagef(err, "Connection: StartWritePump: failed to write close message"))
 				}
 				return
 			}
@@ -164,7 +164,7 @@ func (c *Connection) StartWritePump() {
 				if c.buffer.Length() < maxBufferSize {
 					c.buffer.Add(message)
 				} else {
-					log.Error(errors.New("Buffer full, dropping connection!"))
+					log.Error(errors.New("Connection: StartWritePump:: buffer full, dropping connection!"))
 					return
 				}
 			}

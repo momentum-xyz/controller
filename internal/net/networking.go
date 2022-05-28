@@ -91,15 +91,15 @@ func (n *Networking) cfgUIClient(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(&cfg)
 	if err != nil {
-		err := errors.WithMessage(err, "failed to serve ui client cfg")
-		log.Error(err)
+		err := errors.WithMessage(err, "failed to marshal data")
+		log.Error(errors.WithMessagef(err, "Networking: cfgUIClient"))
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))
 		return
 	}
 
 	if _, err := w.Write(data); err != nil {
-		log.Error(errors.WithMessage(err, "failed to serve ui client cfg"))
+		log.Error(errors.WithMessage(err, "Networking: cfgUIClient: failed to write data"))
 	}
 }
 

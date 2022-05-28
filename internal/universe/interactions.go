@@ -40,7 +40,7 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 	case posbus.TriggerStake:
 		u.HandleStake(m)
 	default:
-		log.Warn("Got unknown interaction for user:", u.ID, "kind:", kind)
+		log.Warn("InteractionHandler: got unknown interaction for user:", u.ID, "kind:", kind)
 	}
 }
 
@@ -87,11 +87,11 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 	}
 
 	if err := u.world.hub.DB.UpdateHighFives(u.ID, targetUUID); err != nil {
-		log.Warn(errors.WithMessage(err, "HandleHighFive: failed to update high fives"))
+		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to update high fives"))
 	}
 	uname, err := u.world.hub.UserStorage.GetUserName(u.ID)
 	if err != nil {
-		log.Warn(errors.WithMessage(err, "HandleHighFive: failed to get user name"))
+		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get user name"))
 	}
 
 	msg := make(map[string]interface{})

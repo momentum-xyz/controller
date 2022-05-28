@@ -334,8 +334,7 @@ func (ksm *Kusama) GetValidatorSpaceIDByAddress(address string) (uuid.UUID, erro
 		address,
 	)
 	if err != nil {
-		log.Warn(errors.WithMessage(err, "failed to get from db"))
-		return uuid.Nil, err
+		return uuid.Nil, errors.WithMessage(err, "failed to get from db")
 	}
 	defer rows.Close()
 
@@ -401,7 +400,7 @@ func (ksm *Kusama) SpawnBlock(b *KusamaBlock) error {
 	}
 
 	if !ksm.world.GetSpacePresent(source) {
-		log.Error("SpawnBlock: space is missing: %s %s", source.String(), b.author)
+		log.Error("Kusama: SpawnBlock: space is missing: %s %s", source.String(), b.author)
 	}
 
 	msg.SetEffect(0, b.id, b.id, source, 10)
@@ -579,7 +578,7 @@ func (ksm *Kusama) RewardCallback(client mqtt.Client, msg mqtt.Message) error {
 	for s := range r.Rewards {
 		dest, err := ksm.GetValidatorSpaceIDByAddress(s)
 		if err != nil {
-			log.Warnf("RewardCallback: failed to get validator space id by address: %s", s)
+			log.Warnf("Kusama: RewardCallback: failed to get validator space id by address: %s", s)
 		} else {
 			vl = append(vl, dest)
 		}
@@ -644,7 +643,7 @@ func (ksm *Kusama) EvClock() error {
 	for rows.Next() {
 		event := EventStruct{}
 		if err := rows.Scan(&event.title, &event.start, &event.image_hash); err != nil {
-			log.Error(errors.WithMessage(err, "EvClock: failed to scan event"))
+			log.Error(errors.WithMessage(err, "Kusama: EvClock: failed to scan event"))
 			continue
 		}
 		events = append(events, event)
@@ -676,7 +675,7 @@ func (ksm *Kusama) EvClock() error {
 
 func (ksm *Kusama) SendEventClockUpdate() {
 	imgHash := ksm.NextEvent.image_hash
-	log.Warnf("SendEventClockUpdate: clock texture: %s", imgHash)
+	log.Warnf("Kusama: SendEventClockUpdate: clock texture: %s", imgHash)
 	if imgHash == "" {
 		imgHash = "some_default_value"
 	}

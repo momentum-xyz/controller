@@ -97,7 +97,7 @@ func (s *Space) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 		}
 		if module == "stage" {
 			if err := s.handleStageMsg(msg.Payload()); err != nil {
-				log.Warn(errors.WithMessage(err, "failed to handle stage msg"))
+				log.Warn(errors.WithMessage(err, "Space: MQTTMessageHandler: failed to handle stage msg"))
 			}
 		}
 		s.SendToUsersOnSpace(
@@ -113,7 +113,7 @@ func (s *Space) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 func (s *Space) handleStageMsg(msg []byte) error {
 	var data map[string]interface{}
 	if err := json.Unmarshal(msg, &data); err != nil {
-		return err
+		return errors.WithMessage(err, "failed to unmarshal msg")
 	}
 
 	if val, ok := data["action"]; !ok || val != "state" {
@@ -147,7 +147,9 @@ func (s *Space) MQTTEffectsHandler(msg []byte) {
 	case "vibe":
 		effect := posbus.NewTriggerTransitionalEffectsOnObjectMsg(1)
 		effect.SetEffect(0, s.world.EffectsEmitter, s.id, 1002)
-		s.world.UpdateVibesBySpaceId(s.id)
+		if _, err := s.world.UpdateVibesBySpaceId(s.id); err != nil {
+			log.Warn(errors.WithMessagef(err, "Space: MQTTEffectsHandler: failed to update vibes by space id"))
+		}
 		s.world.Broadcast(effect.WebsocketMessage())
 	}
 }
@@ -176,13 +178,10 @@ func (s *Space) SendToUsersOnSpace(msg *websocket.PreparedMessage) {
 
 func (s *Space) UpdateSpace() error {
 	log.Debugf("update request: %s", s.id)
-	err := s.UpdateMeta()
-	if err != nil {
-		return err
+	if err := s.UpdateMeta(); err != nil {
+		return errors.WithMessage(err, "failed to update meta")
 	}
-	_ = s.UpdateChildren()
-
-	return nil
+	return s.UpdateChildren()
 }
 
 func checkForChange[V comparable](newval *V, current *V, flag *bool) {
@@ -194,22 +193,29 @@ func checkForChange[V comparable](newval *V, current *V, flag *bool) {
 
 func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	// Update space type
-	var err error
 	if entry["spaceTypeId"] == nil {
 		log.Debug("E", entry)
 	}
-	s.stype, err = s.world.spaceTypes.Get(utils.DbToUuid(entry["spaceTypeId"]))
+
+	stype, err := utils.DbToUuid(entry["spaceTypeId"])
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.WithMessage(err, "failed to parse space type id")
 	}
+	s.stype, err = s.world.spaceTypes.Get(stype)
+	if err != nil {
+		return errors.WithMessagef(err, "failed to get space type: %s", stype)
+	}
+
 	s.pls = s.stype.Placements
 	isdefchanged := false
-	name := entry["name"].(string)
+	name := utils.FromAnyMap(entry, "name", "")
 	checkForChange(&name, &s.Name, &isdefchanged)
 	// fmt.Println("PR:", entry["parentId"])
-	parentId, _ := uuid.FromBytes([]byte((entry["parentId"]).(string)))
-	checkForChange(&parentId, &s.parentId, &isdefchanged)
+	parentID, err := uuid.FromBytes([]byte(utils.FromAnyMap(entry, "parentId", "")))
+	if err != nil {
+		log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to parse parent id"))
+	}
+	checkForChange(&parentID, &s.parentId, &isdefchanged)
 
 	// INFO_UI_ID
 	if s.stype.InfoUIId != uuid.Nil {
@@ -217,30 +223,36 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 		log.Debug("Info Id: %v", s.InfoUI)
 	}
 
-	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
-		minimap := uint8(minimapEntry.(int64))
+	if minimapEntry, ok := entry["minimap"]; ok {
+		minimap := uint8(utils.FromAny[int64](minimapEntry, 0))
 		checkForChange(&minimap, &s.minimap, &isdefchanged)
 	} else {
 		checkForChange(&s.stype.Minimap, &s.minimap, &isdefchanged)
 	}
 
-	assetId := uuid.Nil
-	if entry["asset"] != nil {
-		assetId, _ = uuid.FromBytes([]byte((entry["asset"]).(string)))
+	assetID := uuid.Nil
+	if easset, ok := entry["asset"]; ok {
+		assetID, err = uuid.FromBytes([]byte(utils.FromAny(easset, "")))
+		if err != nil {
+			log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to parse asset id"))
+		}
 	} else if s.stype.AssetId != uuid.Nil {
-		assetId = s.stype.AssetId
+		assetID = s.stype.AssetId
 	}
 	// logger.Logln(1, "Asset:", s.id, assetId)
 	// fmt.Println("AT:", s.id, s.assetId)
-	checkForChange(&assetId, &s.assetId, &isdefchanged)
+	checkForChange(&assetID, &s.assetId, &isdefchanged)
 
 	tether := true
 	checkForChange(&tether, &s.tether, &isdefchanged)
 
-	textures := s.storage.LoadSpaceTileTextures(s.id)
+	textures, err := s.storage.LoadSpaceTileTextures(s.id)
+	if err != nil {
+		log.Error(errors.WithMessagef(err, "Space: UpdateMetaFromMap: failed to load space tile textures: %s", s.id))
+	}
 
-	if namehash, ok := entry["name_hash"]; ok && namehash != nil {
-		textures["name"] = namehash.(string)
+	if namehash, ok := entry["name_hash"]; ok {
+		textures["name"] = utils.FromAny(namehash, "")
 	}
 
 	updatedTextures := make(map[string]string)
@@ -252,21 +264,24 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 		}
 	}
 
-	if val, ok := entry["visible"]; ok && val != nil {
-		s.visible = int8(val.(int64))
+	if evisible, ok := entry["visible"]; ok {
+		s.visible = int8(utils.FromAny[int64](evisible, 0))
 	} else {
 		s.visible = s.stype.Visible
 	}
 
 	// ATTRIBUTES
 	spaceAttributes, err := s.storage.QuerySpaceAttributesById(s.id)
+	if err != nil {
+		log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to get space attributes by id"))
+	}
 
-	intAttributes := make(map[string]int32)
-	intAttributes["private"] = int32(entry["secret"].(int64))
-	intAttributes["stagemode"] = s.isStageMode
+	intAttributes := map[string]int32{
+		"private":   int32(utils.FromAnyMap[string, int64](entry, "secret", 0)),
+		"stagemode": s.isStageMode,
+	}
 
 	stringAttributes := make(map[string]string)
-
 	for i := range spaceAttributes {
 		if !spaceAttributes[i].Value.Valid {
 			intAttributes[spaceAttributes[i].Name] = int32(spaceAttributes[i].Flag)
@@ -286,12 +301,18 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	}
 
 	// Set online users
-	onlineUsers := s.GetOnlineUsers()
-	stringAttributes[peopleOnlineStringKey] = strconv.Itoa(int(onlineUsers))
+	if onlineUsers, err := s.GetOnlineUsers(); err != nil {
+		log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to get online users"))
+	} else {
+		stringAttributes[peopleOnlineStringKey] = strconv.Itoa(int(onlineUsers))
+	}
 
 	// Set vibes
-	vibes := s.CalculateVibes()
-	stringAttributes[vibesStringKey] = strconv.Itoa(int(vibes))
+	if vibes, err := s.CalculateVibes(); err != nil {
+		log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to calculate vibes"))
+	} else {
+		stringAttributes[vibesStringKey] = strconv.Itoa(int(vibes))
+	}
 
 	updatedStringAttributes := make(map[string]string)
 	// String attributes
@@ -303,14 +324,18 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 		}
 	}
 
-	if childPlace, ok := entry[spacetype.ChildPlacement]; ok && childPlace != nil {
+	if childPlace, ok := entry[spacetype.ChildPlacement]; ok {
 		// log.Println("childPlace ", s.id, ": ", childPlace)
 		var t3DPlacements spacetype.T3DPlacements
-		jsonData := []byte(childPlace.(string))
-		_ = json.Unmarshal(jsonData, &t3DPlacements)
+		jsonData := []byte(utils.FromAny(childPlace, ""))
+		if err := json.Unmarshal(jsonData, &t3DPlacements); err != nil {
+			log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to unmarshal child place"))
+		}
 		s.pls = make(map[uuid.UUID]position.Algo)
 		for _, placement := range t3DPlacements {
-			spacetype.FillPlacement(placement.(map[string]interface{}), &s.pls)
+			if err := spacetype.FillPlacement(placement.(map[string]interface{}), s.pls); err != nil {
+				log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to fill placement"))
+			}
 		}
 	}
 	// if s.pls != nil {
@@ -354,8 +379,7 @@ func (s *Space) UpdateMeta() error {
 	log.Debugf("updateMeta request: %s", s.id)
 	entry, err := s.storage.QuerySingleSpaceById(s.id)
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.WithMessage(err, "failed to query single space by id")
 	}
 	return s.UpdateMetaFromMap(entry)
 }
@@ -375,18 +399,17 @@ func (s *Space) SetPosition(pos cmath.Vec3) {
 	}
 }
 
-func (s *Space) Init() {
+func (s *Space) Init() error {
 	s.world.hub.mqtt.SafeSubscribe("space_control/"+s.id.String()+"/#", 1, s.MQTTMessageHandler)
 	// log.Println(0, "*************************!!!")
-	_ = s.UpdateChildren()
-
+	return s.UpdateChildren()
 }
 
 func (s *Space) DeInit() {
 	s.world.hub.mqtt.SafeUnsubscribe("space_control/" + s.id.String())
 }
 
-func (s *Space) UpdatePosition(pos cmath.Vec3, theta float64, force bool) {
+func (s *Space) UpdatePosition(pos cmath.Vec3, theta float64, force bool) error {
 	// logger.Logln(0, "www")
 	// logger.Logf(0, "request: %s\n", x.id)
 	log.Debugf("udatepos request: %s %v\n", s.id, pos)
@@ -404,15 +427,18 @@ func (s *Space) UpdatePosition(pos cmath.Vec3, theta float64, force bool) {
 		}
 
 		// Update children positions
-
 		ChildMap := make(map[uuid.UUID][]uuid.UUID)
-
 		for u := range s.pls {
 			ChildMap[u] = make([]uuid.UUID, 0)
 		}
 
 		for k := range s.children {
-			st := s.world.spaces.Get(k).stype.Id
+			space, ok := s.world.spaces.Get(k)
+			if !ok {
+				log.Errorf("Space: UpdatePosition: failed to get space: %s", k)
+				continue
+			}
+			st := space.stype.Id
 			if _, ok := s.pls[st]; !ok {
 				st = uuid.Nil
 			}
@@ -425,10 +451,19 @@ func (s *Space) UpdatePosition(pos cmath.Vec3, theta float64, force bool) {
 
 			for i, k := range lpm {
 				pos, theta := s.pls[u].CalcPos(s.theta, s.position, i, len(lpm))
-				s.world.spaces.Get(k).UpdatePosition(pos, theta, force)
+				space, ok := s.world.spaces.Get(k)
+				if !ok {
+					log.Errorf("Space: UpdatePosition: failed to get space: %s", k)
+					continue
+				}
+				if err := space.UpdatePosition(pos, theta, force); err != nil {
+					log.Errorf("Space: UpdatePosition: failed to update position: %s", k)
+				}
 			}
 		}
 	}
+
+	return nil
 }
 
 func (s *Space) UpdateChildren() error {
@@ -438,7 +473,7 @@ func (s *Space) UpdateChildren() error {
 	// query := `SELECT id FROM spaces WHERE parentId = ?;`
 	children, err := s.storage.SelectChildrenEntriesByParentId(utils.BinId(s.id))
 	if err != nil {
-		log.Warnf("error: %+v", err)
+		return errors.WithMessage(err, "failed to select children entries by parent id")
 	}
 	if s.id.String() == "0317d64a-1317-409b-b0b6-9f1621b9e01e" {
 		log.Debug("childrenQ:", s.id, time.Since(tm))
@@ -452,11 +487,15 @@ func (s *Space) UpdateChildren() error {
 	fixedChildrenPos := make(map[uuid.UUID]cmath.Vec3)
 	spaceTypes := make(map[uuid.UUID]uuid.UUID)
 	for cid, m := range children {
-		spaceTypes[cid] = utils.DbToUuid(m["spaceTypeId"])
+		spaceTypeID, err := utils.DbToUuid(m["spaceTypeId"])
+		if err != nil {
+			log.Error(errors.WithMessage(err, "Space: UpdateChildren: failed to parse space type is"))
+		}
+		spaceTypes[cid] = spaceTypeID
 		spaceVisible := m["visible"]
 		stVisible := m["st_visible"]
 		spacePosition := m["position"]
-		if (spaceVisible != nil && spaceVisible.(int64) != 0) || (spaceVisible == nil && stVisible.(int64) != 0) {
+		if (utils.FromAny[int64](stVisible, 0) != 0) || (utils.FromAny[int64](spaceVisible, 0) != 0) {
 			if spacePosition == nil {
 				// logger.Logln(1, cid)
 				cids[cid] = true
@@ -464,7 +503,9 @@ func (s *Space) UpdateChildren() error {
 				fixedChildren[cid] = true
 				if !s.children[cid] {
 					var vpos cmath.Vec3
-					_ = json.Unmarshal([]byte(spacePosition.(string)), &vpos)
+					if err := json.Unmarshal([]byte(utils.FromAny(spacePosition, "")), &vpos); err != nil {
+						log.Error(errors.WithMessage(err, "Space: UpdateChildren: failed to unmarshal vpos"))
+					}
 					fixedChildrenPos[cid] = vpos
 				}
 			}
@@ -476,7 +517,9 @@ func (s *Space) UpdateChildren() error {
 	}
 
 	for _, st := range spaceTypes {
-		_, _ = s.world.spaceTypes.Get(st)
+		if _, err := s.world.spaceTypes.Get(st); err != nil {
+			log.Error(errors.WithMessagef(err, "Space: UpdateChildren: failed to get space type: %s", st))
+		}
 	}
 
 	if s.id.String() == "0317d64a-1317-409b-b0b6-9f1621b9e01e" {
@@ -511,7 +554,10 @@ func (s *Space) UpdateChildren() error {
 	// fmt.Println("q1")
 	// TODO: to refactor with use of single query above, which also will include spaceTypeId
 	for _, k := range childIDs {
-		st := spaceTypes[k]
+		st, ok := spaceTypes[k]
+		if !ok {
+			log.Errorf("Space: UpdateChildren: failed to get space type: %s", k)
+		}
 		// fmt.Println("F10:", st)
 		if _, ok := s.pls[st]; !ok {
 			st = uuid.Nil
@@ -528,7 +574,10 @@ func (s *Space) UpdateChildren() error {
 		log.Debugf("children changed, del: %d", len(delCh))
 
 		for k := range delCh {
-			s.world.spaces.Unload(k)
+			if err := s.world.spaces.Unload(k); err != nil {
+				// TODO: maybe we need to return error here?
+				log.Error(errors.WithMessage(err, "Space: UpdateChildren: failed to unload children spaces"))
+			}
 		}
 	}
 
@@ -573,7 +622,14 @@ func (s *Space) UpdateChildren() error {
 			for k, v := range movCh {
 				log.Debugf("Moving %s", k)
 				pos, theta := s.pls[u].CalcPos(s.theta, s.position, v, N)
-				s.world.spaces.Get(k).UpdatePosition(pos, theta, false)
+				space, ok := s.world.spaces.Get(k)
+				if !ok {
+					log.Errorf("Space: UpdateChildren: failed to get space: %s", k)
+					continue
+				}
+				if err := space.UpdatePosition(pos, theta, false); err != nil {
+					log.Error(errors.WithMessagef(err, "Space: UpdateChildren: failed to update position: %s", k))
+				}
 			}
 
 			if s.id.String() == "0317d64a-1317-409b-b0b6-9f1621b9e01e" {
@@ -671,7 +727,12 @@ func (s *Space) PushObjDef(metaArray []message.ObjectDefinition, i *int) {
 	*i++
 
 	for id := range s.children {
-		s.world.spaces.Get(id).PushObjDef(metaArray, i)
+		space, ok := s.world.spaces.Get(id)
+		if !ok {
+			log.Errorf("Space: PushObjDef: failed to get space: %s", id)
+			continue
+		}
+		space.PushObjDef(metaArray, i)
 	}
 }
 
@@ -689,56 +750,74 @@ func (s *Space) filObjDef(metaArray *message.ObjectDefinition) {
 func (s *Space) RecursiveSendAllTextures(connection *socket.Connection) {
 	connection.Send(s.msgBuilder.SetObjectTextures(s.id, s.textures))
 	for id := range s.children {
-		s.world.spaces.Get(id).RecursiveSendAllTextures(connection)
+		space, ok := s.world.spaces.Get(id)
+		if !ok {
+			// TODO: maybe we need to return error here?
+			log.Errorf("Space: RecursiveSendAllTextures: failed to get space: %s", id)
+			continue
+		}
+		space.RecursiveSendAllTextures(connection)
 	}
 }
 
 func (s *Space) RecursiveSendAllAttributes(connection *socket.Connection) {
 	connection.Send(s.msgBuilder.SetObjectAttributes(s.id, s.attributes))
 	for id := range s.children {
-		s.world.spaces.Get(id).RecursiveSendAllAttributes(connection)
+		space, ok := s.world.spaces.Get(id)
+		if !ok {
+			// TODO: maybe we need to return error here?
+			log.Errorf("Space: RecursiveSendAllAttributes: failed to get space: %s", id)
+			continue
+		}
+		space.RecursiveSendAllAttributes(connection)
 	}
 }
 
 func (s *Space) RecursiveSendAllStrings(connection *socket.Connection) {
 	connection.Send(s.msgBuilder.SetObjectStrings(s.id, s.stringAttributes))
 	for id := range s.children {
-		s.world.spaces.Get(id).RecursiveSendAllStrings(connection)
+		space, ok := s.world.spaces.Get(id)
+		if !ok {
+			// TODO: maybe we need to return error here?
+			log.Errorf("Space: RecursiveSendAllStrings: failed to get space: %s", id)
+			continue
+		}
+		space.RecursiveSendAllStrings(connection)
 	}
 }
 
-func (s *Space) CalculateVibes() int64 {
-	q := `select count(*) from vibes where spaceId=?`
-	rows, err := s.world.GetStorage().Queryx(q, utils.BinId(s.id))
-	//noinspection GoUnhandledErrorResult
+func (s *Space) CalculateVibes() (int64, error) {
+	query := `SELECT count(*) FROM vibes WHERE spaceId=?;`
+	rows, err := s.world.GetStorage().Queryx(query, utils.BinId(s.id))
 	if err != nil {
-		log.Errorf("could not get vibes for spaceId: %v", s.id)
+		return 0, errors.WithMessage(err, "failed to query db")
 	}
 	defer rows.Close()
-	vibesCount := int64(0)
+
+	var vibesCount int64
 	rows.Next()
-	err = rows.Scan(&vibesCount)
-	if err != nil {
-		log.Error("could not scan number of vibes: ", err)
+	if err := rows.Scan(&vibesCount); err != nil {
+		return 0, errors.WithMessage(err, "failed to scan rows")
 	}
+
 	log.Debugf("Vibes for spaceId %v: %d", s.id, vibesCount)
-	return vibesCount
+	return vibesCount, nil
 }
 
-func (s *Space) GetOnlineUsers() int64 {
-	q := `SELECT count(*) FROM online_users WHERE spaceId = ?`
-	rows, err := s.world.GetStorage().Queryx(q, utils.BinId(s.id))
-	//noinspection GoUnhandledErrorResult
+func (s *Space) GetOnlineUsers() (int64, error) {
+	query := `SELECT count(*) FROM online_users WHERE spaceId = ?;`
+	rows, err := s.world.GetStorage().Queryx(query, utils.BinId(s.id))
 	if err != nil {
-		log.Errorf("could not get online users for spaceId: %v", s.id)
+		return 0, errors.WithMessage(err, "failed to query db")
 	}
 	defer rows.Close()
-	onlineUsers := int64(0)
+
+	var onlineUsers int64
 	rows.Next()
-	err = rows.Scan(&onlineUsers)
-	if err != nil {
-		log.Error("could not scan number of online users: ", err)
+	if err = rows.Scan(&onlineUsers); err != nil {
+		return 0, errors.WithMessage(err, "failed to scan rows")
 	}
+
 	log.Debugf("Online users for spaceId %v: %d", s.id, onlineUsers)
-	return onlineUsers
+	return onlineUsers, nil
 }

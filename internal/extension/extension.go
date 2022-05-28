@@ -19,12 +19,12 @@ type WorldController interface {
 	GetStorage() *storage.Database
 	GetId() uuid.UUID
 	GetExtensionStorage() string
-	GetSpacePosition(id uuid.UUID) cmath.Vec3
+	GetSpacePosition(id uuid.UUID) (cmath.Vec3, error)
 	GetSpacePresent(id uuid.UUID) bool
 	BroadcastObjects(array []message.ObjectDefinition)
 	Broadcast(websocketMessage *websocket.PreparedMessage)
 	SafeSubscribe(topic string, qos byte, callback mqtt.MessageHandler)
-	SetSpaceTitle(clock uuid.UUID, title string)
+	SetSpaceTitle(clock uuid.UUID, title string) error
 }
 
 type Space interface {

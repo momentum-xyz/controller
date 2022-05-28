@@ -109,7 +109,7 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 			return nil, errors.WithMessagef(err, "failed to add world controller: %s", worldID)
 		}
 	}
-	hub.mqtt.SafeSubscribe("updates/spaces/changed", 1, safemqtt.LogMQTTMessageHandler("spaces changed", hub.ChangeHandler)
+	hub.mqtt.SafeSubscribe("updates/spaces/changed", 1, safemqtt.LogMQTTMessageHandler("spaces changed", hub.ChangeHandler))
 
 	return hub, nil
 }
@@ -122,6 +122,7 @@ func (ch *ControllerHub) RemoveGuestsWithDelay() error {
 	for i := range guests {
 		ch.RemoveUserWithDelay(guests[i], defaultDelayForUsersForRemove)
 	}
+	return nil
 }
 
 func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) {
@@ -150,9 +151,9 @@ func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) 
 		select {
 		case <-dt.C:
 			if err := ch.DB.RemoveFromUsers(id); err != nil {
-				log.Warn(errors.WithMessage(err, "RemoveUserWithDelay: failed to remove from db"))
+				log.Warn(errors.WithMessage(err, "ControllerHub: RemoveUserWithDelay: failed to remove from db"))
 			}
-			log.Debug("RemoveUserWithDelay: user removed: %s", id.String())
+			log.Debug("ControllerHub: RemoveUserWithDelay: user removed: %s", id.String())
 		case <-ctx.Done():
 			dt.Stop()
 		}
@@ -176,6 +177,8 @@ func (ch *ControllerHub) ChangeHandler(client mqtt.Client, message mqtt.Message)
 			controller.updateSpace <- id
 		}
 	}
+
+	return nil
 }
 
 // TODO: this method never ends
@@ -187,7 +190,7 @@ func (ch *ControllerHub) NetworkRunner() {
 		log.Info("ControllerHub::NetworkRunner received successful handshake")
 		go func() {
 			if err := ch.spawnUser(handshake); err != nil {
-				log.Error(errors.WithMessage(err, "NetworkRunner: failed to spawn user"))
+				log.Error(errors.WithMessage(err, "ControllerHub: NetworkRunner: failed to spawn user"))
 			}
 		}()
 	}
@@ -206,14 +209,14 @@ func (ch *ControllerHub) UpdateTotalUsers() {
 	for range time.Tick(time.Minute) {
 		numUsers, err := ch.UserStorage.SelectUserCount()
 		if err != nil {
-			log.Warn(errors.WithMessage(err, "UpdateTotalUsers: failed to get users count"))
+			log.Warn(errors.WithMessage(err, "ControllerHub: UpdateTotalUsers: failed to get users count"))
 			continue
 		}
 		p := influx_db2.NewPoint(
 			"ConnectedUsers", map[string]string{"node": tag}, map[string]interface{}{"count": numUsers}, time.Now(),
 		)
 		if err := ch.WriteInfluxPoint(p); err != nil {
-			log.Warn(errors.WithMessage(err, "UpdateTotalUsers: failed to write influx point"))
+			log.Warn(errors.WithMessage(err, "ControllerHub: UpdateTotalUsers: failed to write influx point"))
 		}
 	}
 }

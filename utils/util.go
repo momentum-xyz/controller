@@ -46,10 +46,15 @@ func LoadRow(rows *sql.Rows) (map[string]interface{}, error) {
 }
 
 func FromAny[V any](val any, defaultValue V) V {
+	if val == nil {
+		return defaultValue
+	}
+
 	v, ok := val.(V)
 	if ok {
 		return v
 	}
+
 	return defaultValue
 }
 
@@ -57,26 +62,6 @@ func FromAnyMap[K comparable, V any](amap map[K]any, key K, defaultValue V) V {
 	if val, ok := amap[key]; ok {
 		return FromAny(val, defaultValue)
 	}
-	return defaultValue
-}
-
-func F64FromMap(parametersMap map[string]any, k string, defaultValue float64) float64 {
-	if v, ok := parametersMap[k]; ok {
-		if v1, ok := v.(float64); ok {
-			return v1
-		}
-	}
-
-	return defaultValue
-}
-
-func BoolFromMap(parametersMap map[string]any, k string, defaultValue bool) bool {
-	if v, ok := parametersMap[k]; ok {
-		if v1, ok := v.(bool); ok {
-			return v1
-		}
-	}
-
 	return defaultValue
 }
 
@@ -97,7 +82,7 @@ func SpaceTypeFromMap(parametersMap map[string]interface{}) (uuid.UUID, error) {
 }
 
 func DbToUuid(f interface{}) (uuid.UUID, error) {
-	q, err := uuid.FromBytes([]byte((f).(string)))
+	q, err := uuid.FromBytes([]byte(FromAny(f, "")))
 	if err != nil {
 		return uuid.Nil, errors.WithMessage(err, "failed to parse uuid")
 	}

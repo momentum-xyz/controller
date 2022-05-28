@@ -9,7 +9,6 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/pkg/errors"
-	"github.com/sasha-s/go-deadlock"
 )
 
 type PositionalParameters struct {
@@ -47,30 +46,26 @@ type TSpaceType struct {
 }
 
 type TSpaceTypes struct {
-	spaceTypes   map[uuid.UUID]*TSpaceType
-	lock         deadlock.Mutex
+	spaceTypes   *utils.SyncMap[uuid.UUID, *TSpaceType]
 	spaceStorage space.Storage
 }
 
 func NewSpaceTypes(spaceStorage space.Storage) *TSpaceTypes {
 	obj := new(TSpaceTypes)
-	obj.spaceTypes = make(map[uuid.UUID]*TSpaceType)
+	obj.spaceTypes = utils.NewSyncMap[uuid.UUID, *TSpaceType]()
 	obj.spaceStorage = spaceStorage
 	return obj
 }
 
 func (t *TSpaceTypes) Set(id uuid.UUID, st *TSpaceType) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	t.spaceTypes[id] = st
+	t.spaceTypes.Store(id, st)
 }
 
 func (t *TSpaceTypes) Get(id uuid.UUID) (*TSpaceType, error) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
+	t.spaceTypes.Mu.Lock()
+	defer t.spaceTypes.Mu.Unlock()
 
-	if spaceType, ok := t.spaceTypes[id]; ok {
+	if spaceType, ok := t.spaceTypes.Data[id]; ok {
 		return spaceType, nil
 	}
 
@@ -79,7 +74,7 @@ func (t *TSpaceTypes) Get(id uuid.UUID) (*TSpaceType, error) {
 		return nil, errors.WithMessagef(err, "failed to update meta space type: %s", spaceType.Id)
 	}
 
-	t.spaceTypes[id] = spaceType
+	t.spaceTypes.Data[id] = spaceType
 	return spaceType, nil
 }
 
@@ -91,8 +86,8 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 		return errors.WithMessage(err, "failed to get entry")
 	}
 
-	if aux, ok := entry[AuxiliaryTables]; ok && aux != nil {
-		if err := json.Unmarshal([]byte(aux.(string)), &x.AuxTables); err != nil {
+	if aux, ok := entry[AuxiliaryTables]; ok {
+		if err := json.Unmarshal([]byte(utils.FromAny(aux, "")), &x.AuxTables); err != nil {
 			return errors.WithMessage(err, "failed to unmarshal aux tables")
 		}
 		log.Info(x.AuxTables)
@@ -102,16 +97,16 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	x.Placements = make(map[uuid.UUID]position.Algo)
 
 	x.Minimap = 1
-	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
-		x.Minimap = uint8(minimapEntry.(int64))
+	if minimapEntry, ok := entry["minimap"]; ok {
+		x.Minimap = uint8(utils.FromAny[int64](minimapEntry, -1))
 	}
 	x.Visible = 1
-	if visibleEntry, ok := entry["visible"]; ok && visibleEntry != nil {
-		x.Visible = int8(visibleEntry.(int64))
+	if visibleEntry, ok := entry["visible"]; ok {
+		x.Visible = int8(utils.FromAny[int64](visibleEntry, -1))
 	}
 
 	x.AssetId = uuid.Nil
-	if AssetId, ok := entry["asset"]; ok && AssetId != nil {
+	if AssetId, ok := entry["asset"]; ok {
 		uid, err := utils.DbToUuid(AssetId)
 		if err != nil {
 			return errors.WithMessage(err, "failed to parse asset id")
@@ -120,7 +115,7 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	}
 
 	x.InfoUIId = uuid.Nil
-	if InfoUIId, ok := entry["infoui_id"]; ok && InfoUIId != nil {
+	if InfoUIId, ok := entry["infoui_id"]; ok {
 		uid, err := utils.DbToUuid(InfoUIId)
 		if err != nil {
 			return errors.WithMessage(err, "failed to parse info ui id")
@@ -131,12 +126,12 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	if childPlace, ok := entry[ChildPlacement]; ok {
 		// log.Println("childPlace ", x.Id, ": ", childPlace)
 		var t3DPlacements T3DPlacements
-		jsonData := []byte(childPlace.(string))
+		jsonData := []byte(utils.FromAny(childPlace, ""))
 		if err := json.Unmarshal(jsonData, &t3DPlacements); err != nil {
 			return errors.WithMessage(err, "failed to unmarshal 3d placements")
 		}
 		for _, placement := range t3DPlacements {
-			if err := FillPlacement(placement.(map[string]interface{}), x.Placements); err != nil {
+			if err := FillPlacement(utils.FromAny(placement, map[string]interface{}{}), x.Placements); err != nil {
 				return errors.WithMessage(err, "failed to fill placement")
 			}
 		}

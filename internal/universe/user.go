@@ -1,6 +1,7 @@
 package universe
 
 import (
+	"github.com/momentum-xyz/controller/utils"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -119,12 +120,12 @@ func (u *User) Unregister(h *WorldController) error {
 		if u.writeLkp {
 			anchorId, vector := u.world.spaces.FindClosest(u.pos)
 			if err := u.world.hub.DB.WriteLastKnownPosition(u.ID, u.world.ID, anchorId, &vector, 0); err != nil {
-				log.Warn(errors.WithMessage(err, "Unregister: failed to write last known position")
+				log.Warn(errors.WithMessage(err, "User: Unregister: failed to write last known position"))
 			}
 		}
 		// remove from online_users in DB
 		if err := u.UserOfflineAction(); err != nil {
-			log.Warn(errors.WithMessage(err, "Unregister: failed to handle offline action")
+			log.Warn(errors.WithMessage(err, "User: Unregister: failed to handle offline action"))
 		}
 		// close connection
 		u.connection.Close()
@@ -163,24 +164,23 @@ func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 func (u *User) UserOfflineAction() error {
 	log.Info("User: UserOfflineAction:", u.ID.String())
 	if err := u.world.hub.DB.RemoveOnline(u.ID, u.world.ID); err != nil {
-		log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove online from db by world id"))
+		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by world id"))
 	}
-	cspace, ok := u.currentSpace.Load().(uuid.UUID)
-	if !ok {
-		return errors.Errorf("invalid current space type: %T", cspace)
-	}
+	cspace := utils.FromAny(u.currentSpace.Load(), uuid.Nil)
 	if cspace != uuid.Nil {
 		if err := u.world.hub.DB.RemoveOnline(u.ID, cspace); err != nil {
-			log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove online from db by space"))
+			log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by space"))
 		}
 		// u.currentSpace. = uuid.Nil
 	}
 	if err := u.world.hub.DB.RemoveDynamicWorldMembership(u.ID, u.world.ID); err != nil {
-		log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove membership from db"))
+		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove membership from db"))
 	}
 	if u.isGuest {
 		u.world.hub.RemoveUserWithDelay(u.ID, defaultDelayForUsersForRemove)
 	}
+
+	return nil
 }
 
 func (u *User) OnMessage(msg *posbus.Message) {
@@ -197,7 +197,7 @@ func (u *User) OnMessage(msg *posbus.Message) {
 		u.UpdatePosition(msg.AsSendPos())
 	case posbus.MsgTypeSwitchWorld:
 		if err := u.SwitchWorld(msg.AsSwitchWorld().World()); err != nil {
-			log.Error(errors.WithMessage(err, "OnMessage: failed to switch world"))
+			log.Error(errors.WithMessage(err, "User: OnMessage: failed to switch world"))
 		}
 	case posbus.MsgTypeSignal:
 		u.HandleSignals(msg.AsSignal().Signal())
@@ -228,13 +228,13 @@ func (u *User) SwitchWorld(newWorldId uuid.UUID) error {
 
 	anchorId, vector := u.world.spaces.FindClosest(u.pos)
 	if err := u.world.hub.DB.WriteLastKnownPosition(u.ID, u.world.ID, anchorId, &vector, 0); err != nil {
-		log.Warn(errors.WithMessage(err, "SwitchWorld: failed to write last known position"))
+		log.Warn(errors.WithMessage(err, "SwitchWorld: SwitchWorld: failed to write last known position"))
 	}
 
 	spaceId, v := u.world.hub.DB.GetUserSpawnPositionInWorld(u.ID, newWorldId)
 	u.writeLkp = false
 	if err := u.world.hub.DB.WriteLastKnownPosition(u.ID, newWorldId, spaceId, &v, 1); err != nil {
-		log.Warn(errors.WithMessage(err,"SwitchWorld: failed to write last known position"))
+		log.Warn(errors.WithMessage(err, "SwitchWorld: SwitchWorld: failed to write last known position"))
 	}
 
 	u.connection.Close()

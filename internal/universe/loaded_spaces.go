@@ -1,16 +1,16 @@
 package universe
 
 import (
-	"errors"
-	"github.com/momentum-xyz/controller/utils"
 	"time"
 
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/controller/pkg/message"
+	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 type LoadedSpaces struct {
@@ -87,15 +87,18 @@ func (ls *LoadedSpaces) FindClosest(pos *cmath.Vec3) (uuid.UUID, cmath.Vec3) {
 	return id, v
 }
 
-func (ls *LoadedSpaces) Unload(spaceId uuid.UUID) {
+func (ls *LoadedSpaces) Unload(spaceId uuid.UUID) error {
 	s, ok := ls.GetPresent(spaceId)
 	if !ok {
-		return
+		return nil
 	}
 
 	log.Info("unload request: %s\n", s.id)
 	for k := range s.children {
-		ls.Unload(k)
+		if err := ls.Unload(k); err != nil {
+			// TODO: maybe we need to return error here?
+			log.Error(errors.WithMessagef(err, "LoadedSpaces: Unload: failed to unload child: %s", k))
+		}
 	}
 	s.DeInit()
 	ls.Delete(s.id)
@@ -104,6 +107,8 @@ func (ls *LoadedSpaces) Unload(spaceId uuid.UUID) {
 	msg.SetObject(0, s.id)
 	s.world.Broadcast(msg.WebsocketMessage())
 	log.Info("unloaded: ", s.id, ls.Num())
+
+	return nil
 }
 
 func (ls *LoadedSpaces) LoadFromEntry(req *RegRequest, entry map[string]interface{}) *Space {

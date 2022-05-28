@@ -1,15 +1,17 @@
 package utils
 
-import "sync"
+import (
+	"github.com/sasha-s/go-deadlock"
+)
 
 type SyncMap[K comparable, V any] struct {
-	Mu   *sync.Mutex
+	Mu   *deadlock.Mutex
 	Data map[K]V
 }
 
 func NewSyncMap[K comparable, V any]() *SyncMap[K, V] {
 	return &SyncMap[K, V]{
-		Mu:   new(sync.Mutex),
+		Mu:   &deadlock.Mutex{},
 		Data: make(map[K]V),
 	}
 }
