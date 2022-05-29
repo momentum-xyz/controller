@@ -3,10 +3,10 @@ package world
 import (
 	"errors"
 
-	"github.com/momentum-xyz/controller/internal/logger"
-	"github.com/momentum-xyz/controller/utils"
 	"github.com/google/uuid"
 	"github.com/jmoiron/sqlx"
+	"github.com/momentum-xyz/controller/internal/logger"
+	"github.com/momentum-xyz/controller/utils"
 )
 
 const (
@@ -76,7 +76,9 @@ func (s *storage) CleanOnlineUsers(spaceID uuid.UUID) error {
 	}
 
 	var affected int64
-	affected, err = res.RowsAffected()
+	if res != nil {
+		affected, err = res.RowsAffected()
+	}
 	log.Debug("World storage: CleanOnlineUsers:", spaceID.String(), affected)
 
 	return err
