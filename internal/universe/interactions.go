@@ -94,10 +94,11 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get user name"))
 	}
 
-	msg := make(map[string]interface{})
-	msg["senderId"] = u.ID.String()
-	msg["receiverId"] = targetUUID.String()
-	msg["message"] = uname + " has high-fived you!"
+	msg := map[string]interface{}{
+		"senderId":   u.ID.String(),
+		"receiverId": targetUUID.String(),
+		"message":    uname + " has high-fived you!",
+	}
 	data, err := json.Marshal(&msg)
 	if err != nil {
 		return errors.WithMessage(err, "failed to marshal data")

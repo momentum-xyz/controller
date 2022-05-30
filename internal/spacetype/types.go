@@ -2,7 +2,6 @@ package spacetype
 
 import (
 	"encoding/json"
-
 	"github.com/momentum-xyz/controller/internal/position"
 	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/controller/utils"
@@ -86,7 +85,7 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 		return errors.WithMessage(err, "failed to get entry")
 	}
 
-	if aux, ok := entry[AuxiliaryTables]; ok {
+	if aux, ok := entry[AuxiliaryTables]; ok && aux != nil {
 		if err := json.Unmarshal([]byte(utils.FromAny(aux, "")), &x.AuxTables); err != nil {
 			return errors.WithMessage(err, "failed to unmarshal aux tables")
 		}
@@ -97,17 +96,17 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	x.Placements = make(map[uuid.UUID]position.Algo)
 
 	x.Minimap = 1
-	if minimapEntry, ok := entry["minimap"]; ok {
+	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
 		x.Minimap = uint8(utils.FromAny[int64](minimapEntry, -1))
 	}
 	x.Visible = 1
-	if visibleEntry, ok := entry["visible"]; ok {
+	if visibleEntry, ok := entry["visible"]; ok && visibleEntry != nil {
 		x.Visible = int8(utils.FromAny[int64](visibleEntry, -1))
 	}
 
 	x.AssetId = uuid.Nil
-	if AssetId, ok := entry["asset"]; ok {
-		uid, err := utils.DbToUuid(AssetId)
+	if assetId, ok := entry["asset"]; ok && assetId != nil {
+		uid, err := utils.DbToUuid(assetId)
 		if err != nil {
 			return errors.WithMessage(err, "failed to parse asset id")
 		}
@@ -115,8 +114,8 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	}
 
 	x.InfoUIId = uuid.Nil
-	if InfoUIId, ok := entry["infoui_id"]; ok {
-		uid, err := utils.DbToUuid(InfoUIId)
+	if infoUIId, ok := entry["infoui_id"]; ok && infoUIId != nil {
+		uid, err := utils.DbToUuid(infoUIId)
 		if err != nil {
 			return errors.WithMessage(err, "failed to parse info ui id")
 		}

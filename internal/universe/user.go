@@ -205,6 +205,7 @@ func (u *User) OnMessage(msg *posbus.Message) {
 		log.Warn("Got unknown message for user:", u.ID, "msg:", msg)
 	}
 }
+
 func (u *User) HandleSignals(s posbus.Signal) {
 	switch s {
 	case posbus.SignalReady:

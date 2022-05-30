@@ -223,7 +223,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 		log.Debug("Info Id: %v", s.InfoUI)
 	}
 
-	if minimapEntry, ok := entry["minimap"]; ok {
+	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
 		minimap := uint8(utils.FromAny[int64](minimapEntry, 0))
 		checkForChange(&minimap, &s.minimap, &isdefchanged)
 	} else {
@@ -231,7 +231,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	}
 
 	assetID := uuid.Nil
-	if easset, ok := entry["asset"]; ok {
+	if easset, ok := entry["asset"]; ok && easset != nil {
 		assetID, err = uuid.FromBytes([]byte(utils.FromAny(easset, "")))
 		if err != nil {
 			log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to parse asset id"))
@@ -251,7 +251,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 		log.Error(errors.WithMessagef(err, "Space: UpdateMetaFromMap: failed to load space tile textures: %s", s.id))
 	}
 
-	if namehash, ok := entry["name_hash"]; ok {
+	if namehash, ok := entry["name_hash"]; ok && namehash != nil {
 		textures["name"] = utils.FromAny(namehash, "")
 	}
 
@@ -264,7 +264,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 		}
 	}
 
-	if evisible, ok := entry["visible"]; ok {
+	if evisible, ok := entry["visible"]; ok && evisible != nil {
 		s.visible = int8(utils.FromAny[int64](evisible, 0))
 	} else {
 		s.visible = s.stype.Visible
@@ -324,7 +324,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 		}
 	}
 
-	if childPlace, ok := entry[spacetype.ChildPlacement]; ok {
+	if childPlace, ok := entry[spacetype.ChildPlacement]; ok && childPlace != nil {
 		// log.Println("childPlace ", s.id, ": ", childPlace)
 		var t3DPlacements spacetype.T3DPlacements
 		jsonData := []byte(utils.FromAny(childPlace, ""))
@@ -495,7 +495,7 @@ func (s *Space) UpdateChildren() error {
 		spaceVisible := m["visible"]
 		stVisible := m["st_visible"]
 		spacePosition := m["position"]
-		if (utils.FromAny[int64](stVisible, 0) != 0) || (utils.FromAny[int64](spaceVisible, 0) != 0) {
+		if (utils.FromAny[int64](spaceVisible, 0) != 0) || (spaceVisible == nil && utils.FromAny[int64](stVisible, 0) != 0) {
 			if spacePosition == nil {
 				// logger.Logln(1, cid)
 				cids[cid] = true

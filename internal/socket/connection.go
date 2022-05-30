@@ -93,8 +93,7 @@ func (c *Connection) StartReadPump() {
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(
 		func(string) error {
-			c.conn.SetReadDeadline(time.Now().Add(pongWait))
-			return nil
+			return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		},
 	)
 	log.Debug("Starting read pump")
@@ -153,7 +152,7 @@ func (c *Connection) StartWritePump() {
 			}
 			if c.canWrite.Get() {
 				for c.buffer.Length() > 0 {
-					if err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage)); err != nil {
+					if err := c.SendDirectly(utils.FromAny[*websocket.PreparedMessage](c.buffer.Remove(), nil)); err != nil {
 						return
 					}
 				}
@@ -187,6 +186,10 @@ func (c *Connection) StartWritePump() {
 }
 
 func (c *Connection) Send(m *websocket.PreparedMessage) {
+	if m == nil {
+		return
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -197,6 +200,10 @@ func (c *Connection) Send(m *websocket.PreparedMessage) {
 }
 
 func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
+	if m == nil {
+		return nil
+	}
+
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

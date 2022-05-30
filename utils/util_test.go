@@ -2,8 +2,9 @@ package utils
 
 import (
 	"fmt"
-	"github.com/google/uuid"
 	"testing"
+
+	"github.com/google/uuid"
 )
 
 func TestF64FromMap(t *testing.T) {
@@ -33,7 +34,7 @@ func TestF64FromMap(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := F64FromMap(test.input, test.key, def)
+			actual := FromAnyMap(test.input, test.key, def)
 			if actual != test.expected {
 				t.Errorf("expected %v, got %v", test.expected, actual)
 			}
@@ -77,7 +78,7 @@ func TestPlaceKindFromMap(t *testing.T) {
 	}
 	for _, test := range tt {
 		t.Run(test.name, func(t *testing.T) {
-			got := SpaceTypeFromMap(test.data)
+			got, _ := SpaceTypeFromMap(test.data)
 			if got != test.want {
 				t.Errorf("error in SpaceTypeFromMap. Got: %s, want: %s", got, test.want)
 			}

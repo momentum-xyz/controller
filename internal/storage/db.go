@@ -68,6 +68,7 @@ func (DB *Database) GetParentWorld(sid uuid.UUID) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	bid := make([]byte, 16)
@@ -90,6 +91,7 @@ func (DB *Database) isSpacePresent(id uuid.UUID) (bool, error) {
 	if err != nil {
 		return false, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	return rows.Next(), nil
@@ -102,6 +104,7 @@ func (DB *Database) GetWorldByURL(URL *url.URL) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	log.Info("Spawn flow: G1")
@@ -138,6 +141,7 @@ func (DB *Database) GetastUserWorld(uid uuid.UUID) (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	if rows.Next() {
@@ -168,6 +172,7 @@ func (DB *Database) GetDefaultEntranceWorld() (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	if rows.Next() {
@@ -195,6 +200,7 @@ func (DB *Database) GetRandomWorld() (uuid.UUID, error) {
 	if err != nil {
 		return uuid.Nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	if rows.Next() {
@@ -224,6 +230,7 @@ func (DB *Database) GetUserLastKnownPosition(UserId, WorldId uuid.UUID) (uuid.UU
 	if err != nil {
 		return uuid.Nil, cmath.MNan32Vec3(), errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	if rows.Next() {
@@ -257,6 +264,7 @@ func (DB *Database) GetWorldDefauleSpawnPositon(WorldId uuid.UUID) (uuid.UUID, c
 	if err != nil {
 		return uuid.Nil, cmath.MNan32Vec3(), errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	if rows.Next() {
@@ -361,6 +369,7 @@ func (DB *Database) GetUsersIDsByType(typeid uuid.UUID) ([]uuid.UUID, error) {
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	bid := make([]byte, 16)
@@ -381,11 +390,11 @@ func (DB *Database) GetUsersIDsByType(typeid uuid.UUID) ([]uuid.UUID, error) {
 
 func (DB *Database) QuerySingleByField(table string, field string, ref interface{}) (map[string]interface{}, error) {
 	query := `SELECT * FROM ` + table + ` WHERE  ` + field + ` = ?;`
-
 	rows, err := DB.Query(query, ref)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	return utils.LoadRow(rows)
@@ -397,11 +406,11 @@ func (DB *Database) QuerySingleAuxById(tables []string, id []byte) (map[string]i
 	}
 
 	query := `SELECT * FROM ` + strings.Join(tables, ",") + ` WHERE spaceId = ?;`
-
 	rows, err := DB.Query(query, id)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	return utils.LoadRow(rows)
@@ -409,11 +418,11 @@ func (DB *Database) QuerySingleAuxById(tables []string, id []byte) (map[string]i
 
 func (DB *Database) QuerySingleByBinId(table string, id []byte) (map[string]interface{}, error) {
 	query := `SELECT * FROM ` + table + ` WHERE  id = ?;`
-
 	rows, err := DB.Query(query, id)
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	return utils.LoadRow(rows)
@@ -526,6 +535,7 @@ func (DB *Database) QueryWorldConfig(id uuid.UUID) (map[string]interface{}, erro
 	if err != nil {
 		return nil, errors.WithMessage(err, "failed to query db")
 	}
+	//noinspection GoUnhandledErrorResult
 	defer rows.Close()
 
 	if rows.Next() {
