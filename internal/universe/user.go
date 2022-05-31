@@ -58,7 +58,7 @@ func (u *User) Register(wc *WorldController) {
 	}
 
 	defer func() {
-		log.Info("Spawned %s on %s", u.ID, u.world.ID)
+		log.Infof("Spawned %s on %s", u.ID, u.world.ID)
 	}()
 	// go utils.ChanMonitor("user:"+u.ID.String(), u.connection.send, 3*time.Second)
 	log.Info("Registering user: " + u.ID.String())
