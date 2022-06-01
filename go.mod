@@ -19,7 +19,7 @@ require (
 	github.com/sasha-s/go-deadlock v0.3.1
 	go.etcd.io/bbolt v1.3.6
 	go.uber.org/zap v1.21.0
-	gopkg.in/yaml.v2 v2.3.0
+	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b
 )
 
 require (
@@ -30,4 +30,5 @@ require (
 	go.uber.org/multierr v1.6.0 // indirect
 	golang.org/x/net v0.0.0-20220127200216-cd36cc0744dd // indirect
 	golang.org/x/sys v0.0.0-20211216021012-1d35b9e2eb4e // indirect
+	gopkg.in/yaml.v2 v2.3.0 // indirect
 )
