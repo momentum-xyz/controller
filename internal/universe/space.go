@@ -3,7 +3,6 @@ package universe
 import (
 	// STD
 	"encoding/json"
-	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -119,18 +118,9 @@ func (s *Space) handleStageMsg(msg []byte) error {
 	if val, ok := data["action"]; !ok || val != "state" {
 		return nil
 	}
-	v, ok := data["value"]
-	if !ok {
-		return nil
-	}
-
-	sv, ok := v.(string)
-	if !ok {
-		return fmt.Errorf("invalid value type: %T", v)
-	}
-	val, err := strconv.ParseInt(sv, 10, 32)
+	val, err := strconv.ParseInt(utils.FromAny(data["value"], ""), 10, 32)
 	if err != nil {
-		return fmt.Errorf("invalid value: %s", sv)
+		return errors.WithMessage(err, "invalid value")
 	}
 
 	s.isStageMode = int32(val)
