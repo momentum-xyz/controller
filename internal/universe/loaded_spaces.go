@@ -173,6 +173,7 @@ func (ls *LoadedSpaces) Load(req *RegRequest) *Space {
 
 	tm = time.Now()
 	if err := obj.UpdateMeta(); err != nil {
+		log.Warn(errors.WithMessage(err, "LoadedSpaces: Load: failed to update meta"))
 		return nil
 	}
 	obj.initialized = true

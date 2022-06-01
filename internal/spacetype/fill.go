@@ -21,7 +21,7 @@ func FillPlacement(placementMap map[string]interface{}, placements map[uuid.UUID
 
 	kind, err := utils.SpaceTypeFromMap(placementMap)
 	if err != nil {
-		return errors.WithMessage(err, "failed to get space type for map")
+		log.Warn(errors.WithMessage(err, "TSpaceTypes: FillPlacement: failed to get space type for map"))
 	}
 
 	var par position.Algo

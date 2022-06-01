@@ -5,13 +5,13 @@ import (
 )
 
 type SyncMap[K comparable, V any] struct {
-	Mu   *deadlock.Mutex
+	Mu   deadlock.Mutex
 	Data map[K]V
 }
 
 func NewSyncMap[K comparable, V any]() *SyncMap[K, V] {
 	return &SyncMap[K, V]{
-		Mu:   &deadlock.Mutex{},
+		Mu:   deadlock.Mutex{},
 		Data: make(map[K]V),
 	}
 }

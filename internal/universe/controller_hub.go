@@ -302,7 +302,7 @@ func (ch *ControllerHub) spawnUserAt(
 		return errors.WithMessage(err, "failed to get world controller")
 	}
 	log.Info("Spawn flow: got WC", userID)
-	log.Info("Spawning user %s on %s:[%f,%f,%f]", userID, wc.ID, pos.X, pos.Y, pos.Z)
+	log.Infof("Spawning user %s on %s:[%f,%f,%f]", userID, wc.ID, pos.X, pos.Y, pos.Z)
 	name, typeId, err := ch.DB.GetUserInfo(userID)
 	if err != nil {
 		return errors.WithMessage(err, "failed to get user info")

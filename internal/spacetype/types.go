@@ -131,7 +131,7 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 		}
 		for _, placement := range t3DPlacements {
 			if err := FillPlacement(utils.FromAny(placement, map[string]interface{}{}), x.Placements); err != nil {
-				return errors.WithMessage(err, "failed to fill placement")
+				log.Warn(errors.WithMessage(err, "TSpaceTypes: UpdateMetaSpaceType: failed to fill placement"))
 			}
 		}
 	}
