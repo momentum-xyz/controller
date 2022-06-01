@@ -12,7 +12,7 @@ import (
 	// Third-Party
 	"github.com/kelseyhightower/envconfig"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Config : structure to hold configuration
