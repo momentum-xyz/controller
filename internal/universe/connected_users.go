@@ -1,6 +1,7 @@
 package universe
 
 import (
+	"github.com/pkg/errors"
 	"time"
 
 	"github.com/momentum-xyz/controller/utils"
@@ -68,7 +69,11 @@ func (cu *ConnectedUsers) Add(u *User) {
 
 func (cu *ConnectedUsers) UserLeft(userId uuid.UUID) {
 	cu.goneUsers.Store(userId, struct{}{})
-	go cu.world.UpdateOnline()
+	go func() {
+		if err := cu.world.UpdateOnline(); err != nil {
+			log.Error(errors.WithMessage(err, "ConnectedUsers: UserLeft: failed to update online"))
+		}
+	}()
 }
 
 func (cu *ConnectedUsers) PerformBroadcast(message *websocket.PreparedMessage) {

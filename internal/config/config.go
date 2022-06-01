@@ -1,7 +1,6 @@
 package config
 
 import (
-	"github.com/pkg/errors"
 	// Std
 	"io"
 	"os"
@@ -12,8 +11,9 @@ import (
 
 	// Third-Party
 	"github.com/kelseyhightower/envconfig"
+	"github.com/pkg/errors"
 	"go.uber.org/zap/zapcore"
-	"gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v3"
 )
 
 // Config : structure to hold configuration
@@ -99,10 +99,10 @@ func GetConfig() *Config {
 	cfg := defConfig()
 
 	if err := readFile(cfg); err != nil {
-		log.Fatalf("GetConfig: failed to read file: %+v", err)
+		log.Fatalf("GetConfig: failed to read file: %s", err)
 	}
 	if err := readEnv(cfg); err != nil {
-		log.Fatalf("GetConfig: failed to read env: %+v", err)
+		log.Fatalf("GetConfig: failed to read env: %s", err)
 	}
 	readOpts(cfg)
 

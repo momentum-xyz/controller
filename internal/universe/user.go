@@ -59,7 +59,7 @@ func (u *User) Register(wc *WorldController) error {
 	}
 
 	defer func() {
-		log.Info("Spawned %s on %s", u.ID, u.world.ID)
+		log.Infof("Spawned %s on %s", u.ID, u.world.ID)
 	}()
 
 	// go utils.ChanMonitor("user:"+u.ID.String(), u.connection.send, 3*time.Second)
@@ -73,7 +73,9 @@ func (u *User) Register(wc *WorldController) error {
 	u.pos = (*cmath.Vec3)(unsafe.Add(unsafe.Pointer(&u.posbuf[0]), 16))
 	*u.pos = ipos
 	u.world = wc
-	u.world.UserOnlineAction(u.ID)
+	if err := u.world.UserOnlineAction(u.ID); err != nil {
+		return errors.WithMessagef(err, "failed to handle user online action: %s", u.ID)
+	}
 	u.lastUpdate = int64(0)
 	u.currentSpace.Store(uuid.Nil)
 
@@ -92,7 +94,10 @@ func (u *User) Register(wc *WorldController) error {
 		return errors.WithMessage(err, "failed to send position")
 	}
 	log.Info("send initial world")
-	u.world.AddUserToWorld(u) // AddToWorld is happening there
+	// AddToWorld is happening there
+	if err := u.world.AddUserToWorld(u); err != nil {
+		return errors.WithMessage(err, "failed to add user to world")
+	}
 	wc.hub.mqtt.SafeSubscribe("user_control/"+wc.ID.String()+"/"+u.ID.String()+"/#", 1, u.MQTTMessageHandler)
 	// remove user from delay remove list
 	if val, ok := u.world.hub.usersForRemoveWithDelay.Load(u.ID); ok {

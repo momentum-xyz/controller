@@ -241,7 +241,7 @@ func (ch *ControllerHub) GetNodeSettings() error {
 
 	guestUserType, err := ch.DB.GetGuestUserTypeId("Temporary User")
 	if err != nil {
-		return errors.WithMessage(err, "failed to get guest user type")
+		log.Warn(errors.WithMessage(err, "ControllerHub: GetNodeSettings: failed to get guest user type"))
 	}
 	ch.guestUserTypeId = guestUserType
 
@@ -285,7 +285,11 @@ func (ch *ControllerHub) AddWorldController(worldID uuid.UUID) (*WorldController
 		return nil, errors.WithMessage(err, "failed to create new world controller")
 	}
 	ch.Worlds.Store(worldID, wc)
-	go wc.run()
+	go func() {
+		if err := wc.run(); err != nil {
+			log.Error(errors.WithMessage(err, "ControllerHub: AddWorldController: failed to run world controller"))
+		}
+	}()
 
 	return wc, nil
 }

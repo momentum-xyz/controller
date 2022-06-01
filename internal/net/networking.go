@@ -120,7 +120,7 @@ func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
 	URL, _ := url.Parse(string(handshakeObj.Url()))
 	log.Info("URL to use:", URL)
 
-	userIDclaim, _ := uuid.Parse((*claims)["sub"].(string))
+	userIDclaim, _ := uuid.Parse(utils.FromAnyMap(*claims, "sub", ""))
 
 	if (userID == userIDclaim) || (userIDclaim.String() == "69e1d7f6-3130-4005-9969-31edf9af9445") || (userIDclaim.String() == "eb50bbc8-ba4e-46a3-a480-a9b30141ce91") {
 		connection := socket.NewConnection(conn)
@@ -180,7 +180,7 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 
 	if err := auth.VerifyToken(token, n.cfg.Common.IntrospectURL); err != nil {
 		userID := message.DeserializeGUID(handshake.UserId(nil))
-		log.Errorf("error: wrong PreHandShake (invalid token: %s), aborting connection: %+v", userID, err)
+		log.Errorf("error: wrong PreHandShake (invalid token: %s), aborting connection: %s", userID, err)
 		return nil, nil, false, nil
 	}
 

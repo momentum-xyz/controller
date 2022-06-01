@@ -121,7 +121,9 @@ func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *messa
 		return nil, errors.WithMessage(err, "failed to update meta")
 	}
 
-	controller.LoadExtensions()
+	if err := controller.LoadExtensions(); err != nil {
+		log.Error(errors.WithMessage(err, "newWorldController: failed to load extension"))
+	}
 
 	controller.spaces.Init()
 
@@ -425,13 +427,15 @@ func (wc *WorldController) run() error {
 		case id := <-wc.unregisterSpace:
 			// fmt.Println(color.Red, "RegSpace", color.Reset)
 			// log.Infof("unreg request: %s", id)
-			wc.spaces.Unload(id)
+			if err := wc.spaces.Unload(id); err != nil {
+				log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unload space: %s", id))
+			}
 		case client := <-wc.registerUser:
 			// log.Info("Reg User0")
 			log.Info("Spawn flow: got reg request for", client.ID)
 			go func() {
 				if err := client.Register(wc); err != nil {
-					log.Warn(errors.WithMessagef(err, "WorldController: run:failed to register client: %s", client.ID))
+					log.Warn(errors.WithMessagef(err, "WorldController: run: failed to register client: %s", client.ID))
 				}
 			}()
 			log.Info("Spawn flow: reg done for", client.ID)
@@ -440,7 +444,7 @@ func (wc *WorldController) run() error {
 				client := <-wc.registerUser
 				go func() {
 					if err := client.Register(wc); err != nil {
-						log.Warn(errors.WithMessagef(err, "WorldController: run:failed to register client: %s", client.ID))
+						log.Warn(errors.WithMessagef(err, "WorldController: run: failed to register client: %s", client.ID))
 					}
 				}()
 			}

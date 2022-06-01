@@ -206,7 +206,7 @@ func (ksm *Kusama) Init() error {
 	if s, ok = r["asset"]; !ok {
 		return errors.New("failed to get asset")
 	}
-	ksm.TransactionBlockAsset, err = uuid.FromBytes([]byte(s.(string)))
+	ksm.TransactionBlockAsset, err = uuid.FromBytes([]byte(utils.FromAny(s, "")))
 	if err != nil {
 		return errors.WithMessage(err, "failed to get transaction block asset")
 	}
@@ -214,7 +214,7 @@ func (ksm *Kusama) Init() error {
 	if s, ok = r["infoui_id"]; !ok {
 		return errors.New("failed to get info ui id")
 	}
-	ksm.BlockInfoUI, err = uuid.FromBytes([]byte(s.(string)))
+	ksm.BlockInfoUI, err = uuid.FromBytes([]byte(utils.FromAny(s, "")))
 	if err != nil {
 		return errors.WithMessage(err, "failed to get block info ui")
 	}
@@ -226,7 +226,7 @@ func (ksm *Kusama) Init() error {
 	if s, ok = r["id"]; !ok {
 		return errors.New("failed to get kusama validator id attribute")
 	}
-	ksm.ValidatorAddressIdAttribute, err = uuid.FromBytes([]byte(s.(string)))
+	ksm.ValidatorAddressIdAttribute, err = uuid.FromBytes([]byte(utils.FromAny(s, "")))
 	if err != nil {
 		return errors.WithMessage(err, "failed to get validator address id attribute")
 	}
@@ -400,7 +400,7 @@ func (ksm *Kusama) SpawnBlock(b *KusamaBlock) error {
 	}
 
 	if !ksm.world.GetSpacePresent(source) {
-		log.Error("Kusama: SpawnBlock: space is missing: %s %s", source.String(), b.author)
+		log.Errorf("Kusama: SpawnBlock: space is missing: %s %s", source.String(), b.author)
 	}
 
 	msg.SetEffect(0, b.id, b.id, source, 10)
@@ -500,7 +500,11 @@ func (ksm *Kusama) BlockFinalizationCallback(client mqtt.Client, message mqtt.Me
 	for blockID := range ksm.blocks {
 		if blockID <= id {
 			bid := ksm.blocks[blockID].id
-			go ksm.UnSpawnBlock(bid)
+			go func() {
+				if err := ksm.UnSpawnBlock(bid); err != nil {
+					log.Error(errors.WithMessagef(err, "Kusama: BlockFinalizationCallback: failed to unspawn block: %s", bid))
+				}
+			}()
 			time.Sleep(time.Millisecond * 30)
 			delete(ksm.blocks, blockID)
 			if err := ksm.DeleteBlockInfo(blockID); err != nil {
@@ -659,7 +663,9 @@ func (ksm *Kusama) EvClock() error {
 			"EvClock: updatimg timer state (UTC) to %s (now %s) , diff: %s", ksm.NextEvent.start.UTC().String(),
 			time.Now().UTC().String(), ff,
 		)
-		ksm.world.SetSpaceTitle(ksm.EventsClock, ksm.NextEvent.title)
+		if err := ksm.world.SetSpaceTitle(ksm.EventsClock, ksm.NextEvent.title); err != nil {
+			log.Warn("Kusama: EvClock: failed to set space title")
+		}
 		ksm.SendEventClockUpdate()
 	}
 

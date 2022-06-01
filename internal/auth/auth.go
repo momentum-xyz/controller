@@ -40,9 +40,7 @@ func VerifyToken(token string, introspectUrl string) error {
 	}
 
 	ret := make([]byte, resp.ContentLength)
-	if _, err := resp.Body.Read(ret); err != nil {
-		return errors.WithMessage(err, "failed to read body")
-	}
+	resp.Body.Read(ret)
 	if string(ret) != "1" {
 		return errors.Errorf("invalid ret: %s", ret)
 	}

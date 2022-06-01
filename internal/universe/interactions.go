@@ -25,14 +25,18 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		if err := u.world.hub.DB.InsertOnline(u.ID, targetUUID); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger entered space: failed to insert one"))
 		}
-		u.world.UpdateOnlineBySpaceId(targetUUID)
+		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
+			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger entered space: failed to update online by space id"))
+		}
 	case posbus.TriggerLeftSpace:
 		targetUUID := m.Target()
 		u.currentSpace.Store(uuid.Nil)
 		if err := u.world.hub.DB.RemoveOnline(u.ID, targetUUID); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger left space: failed to remove online from db"))
 		}
-		u.world.UpdateOnlineBySpaceId(targetUUID)
+		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
+			log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to update online by space id"))
+		}
 	case posbus.TriggerHighFive:
 		if err := u.HandleHighFive(m); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger high fives: failed to handle high five"))

@@ -105,11 +105,11 @@ func (c *Connection) StartReadPump() {
 				case websocket.CloseNormalClosure,
 					websocket.CloseGoingAway,
 					websocket.CloseNoStatusReceived:
-					log.Infof("websocket closed by client: %v", err)
+					log.Infof("websocket closed by client: %s", err)
 					return
 				}
 			}
-			log.Errorf("Connection: StartReadPump: failed to read message fron connection: %v", err)
+			log.Error(errors.WithMessage(err, "Connection: StartReadPump: failed to read message fron connection"))
 			break
 		}
 		if messageType != websocket.BinaryMessage {

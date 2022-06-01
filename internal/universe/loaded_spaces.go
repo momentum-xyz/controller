@@ -141,7 +141,9 @@ func (ls *LoadedSpaces) LoadFromEntry(req *RegRequest, entry map[string]interfac
 	ls.Add(obj)
 	ls.Time4 += time.Since(tm)
 
-	obj.Init()
+	if err := obj.Init(); err != nil {
+		log.Error(errors.WithMessage(err, "LoadedSpaces: LoadFromEntry: failed to init object"))
+	}
 	if obj.id == ls.world.ID {
 		log.Info("Structure for the world "+obj.id.String()+" is loaded", ls.MetaTime, ls.Time1, ls.Time2, ls.Time3)
 	}
@@ -151,7 +153,7 @@ func (ls *LoadedSpaces) LoadFromEntry(req *RegRequest, entry map[string]interfac
 
 func (ls *LoadedSpaces) Load(req *RegRequest) *Space {
 	if req.id == ls.world.ID {
-		log.Info("Starting load world for the world %s", req.id.String())
+		log.Infof("Starting load world for the world %s", req.id.String())
 	}
 
 	log.Infof("load request: %s", req.id)
@@ -180,7 +182,9 @@ func (ls *LoadedSpaces) Load(req *RegRequest) *Space {
 	ls.Add(obj)
 	ls.Time4 += time.Since(tm)
 
-	obj.Init()
+	if err := obj.Init(); err != nil {
+		log.Error(errors.WithMessage(err, "LoadedSpaces: Load: failed to init object"))
+	}
 	if obj.id == ls.world.ID {
 		log.Infof(
 			"Structure for the world %s is loaded (%d): %s, %s, %s, %s, %s\n", obj.id.String(), obj.world.spaces.Num(),
@@ -196,7 +200,8 @@ func (ls *LoadedSpaces) Load(req *RegRequest) *Space {
 func (ls *LoadedSpaces) GetPos(id uuid.UUID) (cmath.Vec3, error) {
 	space, ok := ls.GetPresent(id)
 	if !ok {
-		return cmath.MNan32Vec3(), errors.New("no space to query pos")
+		log.Warnf("LoadedSpaces: GetPos: space not present: %s", id)
+		return cmath.DefaultPosition(), nil
 	}
 	return space.position, nil
 }

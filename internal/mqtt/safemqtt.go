@@ -35,7 +35,7 @@ var (
 	}
 	connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
 		// TODO: use proper logger
-		log.Info("Connection to MQTT broker lost: %v\n", err)
+		log.Info("Connection to MQTT broker lost: %s\n", err)
 		client.Connect()
 	}
 )

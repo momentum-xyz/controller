@@ -46,7 +46,7 @@ func TestPlaceKindFromMap(t *testing.T) {
 	uuidHelperParse := func(s interface{}) uuid.UUID {
 		u, err := uuid.Parse(s.(string))
 		if err != nil {
-			_ = fmt.Errorf("error in parsing: %+v, %v", s, err)
+			_ = fmt.Errorf("error in parsing: %s, %v", s, err)
 		}
 
 		return u
