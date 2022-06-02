@@ -1,7 +1,7 @@
 package socket
 
 import (
-	"sync"
+	"github.com/sasha-s/go-deadlock"
 	"time"
 
 	"github.com/momentum-xyz/controller/internal/logger"
@@ -34,7 +34,7 @@ type Connection struct {
 	OnPumpEnd func()
 	stopChan  chan bool
 	canWrite  utils.TAtomBool
-	mu        *sync.Mutex
+	mu        *deadlock.RWMutex
 	conn      *websocket.Conn
 	closed    bool
 }
@@ -81,7 +81,7 @@ func NewConnection(conn *websocket.Conn) *Connection {
 		buffer:    queue.New(),
 		OnReceive: OnReceiveStub,
 		OnPumpEnd: OnPumpEndStub,
-		mu:        new(sync.Mutex),
+		mu:        new(deadlock.RWMutex),
 		conn:      conn,
 	}
 	c.canWrite.Set(false)
@@ -190,8 +190,8 @@ func (c *Connection) Send(m *websocket.PreparedMessage) {
 		return
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if c.closed {
 		return
@@ -204,8 +204,8 @@ func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
 		return nil
 	}
 
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if c.closed {
 		return nil
