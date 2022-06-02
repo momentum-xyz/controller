@@ -3,6 +3,7 @@ package universe
 import (
 	// STD
 	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -157,13 +158,16 @@ func (s *Space) MQTTEffectsHandler(msg []byte) {
 // }
 
 func (s *Space) SendToUsersOnSpace(msg *websocket.PreparedMessage) {
+	fmt.Println("Sending on space", s.id)
 	if s.id == s.world.ID {
 		s.world.Broadcast(msg)
 	} else {
 		for _, u := range s.world.users.GetOnSpace(s.id) {
+			fmt.Println(u.name)
 			u.connection.Send(msg)
 		}
 	}
+	fmt.Println("==================")
 }
 
 func (s *Space) UpdateSpace() error {
@@ -485,7 +489,9 @@ func (s *Space) UpdateChildren() error {
 		spaceVisible := m["visible"]
 		stVisible := m["st_visible"]
 		spacePosition := m["position"]
-		if (utils.GetFromAny[int64](spaceVisible, 0) != 0) || (spaceVisible == nil && utils.GetFromAny[int64](stVisible, 0) != 0) {
+		if (utils.GetFromAny[int64](spaceVisible, 0) != 0) || (spaceVisible == nil && utils.GetFromAny[int64](
+			stVisible, 0,
+		) != 0) {
 			if spacePosition == nil {
 				// logger.Logln(1, cid)
 				cids[cid] = true
