@@ -167,8 +167,8 @@ func (ch *ControllerHub) ChangeHandler(client mqtt.Client, message mqtt.Message)
 	}
 	log.Debug("Update for:", id)
 
-	ch.Worlds.Mu.Lock()
-	defer ch.Worlds.Mu.Unlock()
+	ch.Worlds.Mu.RLock()
+	defer ch.Worlds.Mu.RUnlock()
 
 	for u, controller := range ch.Worlds.Data {
 		log.Debug("Check update in world:", u)

@@ -97,11 +97,11 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 
 	x.Minimap = 1
 	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
-		x.Minimap = uint8(utils.GetFromAny[int64](minimapEntry, -1))
+		x.Minimap = uint8(utils.GetFromAny[int64](minimapEntry, 0))
 	}
 	x.Visible = 1
 	if visibleEntry, ok := entry["visible"]; ok && visibleEntry != nil {
-		x.Visible = int8(utils.GetFromAny[int64](visibleEntry, -1))
+		x.Visible = int8(utils.GetFromAny[int64](visibleEntry, 0))
 	}
 
 	x.AssetId = uuid.Nil

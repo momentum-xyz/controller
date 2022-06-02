@@ -77,8 +77,8 @@ func (cu *ConnectedUsers) UserLeft(userId uuid.UUID) {
 }
 
 func (cu *ConnectedUsers) PerformBroadcast(message *websocket.PreparedMessage) {
-	cu.users.Mu.Lock()
-	defer cu.users.Mu.Unlock()
+	cu.users.Mu.RLock()
+	defer cu.users.Mu.RUnlock()
 
 	for _, clnt := range cu.users.Data {
 		clnt.connection.Send(message)
@@ -86,12 +86,12 @@ func (cu *ConnectedUsers) PerformBroadcast(message *websocket.PreparedMessage) {
 }
 
 func (cu *ConnectedUsers) BroadcastDisconnectedUsers() {
-	cu.goneUsers.Mu.Lock()
+	cu.goneUsers.Mu.RLock()
 	goneUsersIds := make([]uuid.UUID, 0, len(cu.goneUsers.Data))
 	for id := range cu.goneUsers.Data {
 		goneUsersIds = append(goneUsersIds, id)
 	}
-	cu.goneUsers.Mu.Unlock()
+	cu.goneUsers.Mu.RUnlock()
 
 	ng := len(goneUsersIds)
 	if ng > 0 {
@@ -109,7 +109,7 @@ func (cu *ConnectedUsers) BroadcastDisconnectedUsers() {
 
 func (cu *ConnectedUsers) BroadcastPositions() {
 	flag := false
-	cu.users.Mu.Lock()
+	cu.users.Mu.RLock()
 	numClients := len(cu.users.Data)
 	msg := posbus.NewUserPositionsMsg(numClients)
 	if numClients > 0 {
@@ -122,7 +122,7 @@ func (cu *ConnectedUsers) BroadcastPositions() {
 		}
 		cu.positionLock.Unlock()
 	}
-	cu.users.Mu.Unlock()
+	cu.users.Mu.RUnlock()
 	if flag {
 		cu.Broadcast(msg.WebsocketMessage())
 	}
@@ -135,8 +135,8 @@ func (cu *ConnectedUsers) BroadcastUsersUpdate() {
 }
 
 func (cu *ConnectedUsers) Num() int {
-	cu.users.Mu.Lock()
-	defer cu.users.Mu.Unlock()
+	cu.users.Mu.RLock()
+	defer cu.users.Mu.RUnlock()
 
 	return len(cu.users.Data)
 }
@@ -146,8 +146,8 @@ func (cu *ConnectedUsers) Delete(id uuid.UUID) {
 }
 
 func (cu *ConnectedUsers) GetOnSpace(spaceId uuid.UUID) []*User {
-	cu.users.Mu.Lock()
-	defer cu.users.Mu.Unlock()
+	cu.users.Mu.RLock()
+	defer cu.users.Mu.RUnlock()
 
 	ul := make([]*User, 0)
 	for _, u := range cu.users.Data {

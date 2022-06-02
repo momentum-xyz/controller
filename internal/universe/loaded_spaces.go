@@ -39,8 +39,8 @@ func newSpaces(wc *WorldController, spaceStorage space.Storage, msgBuilder *mess
 }
 
 func (ls *LoadedSpaces) Num() int {
-	ls.spaces.Mu.Lock()
-	defer ls.spaces.Mu.Unlock()
+	ls.spaces.Mu.RLock()
+	defer ls.spaces.Mu.RUnlock()
 
 	return len(ls.spaces.Data)
 }
@@ -68,8 +68,8 @@ func (ls *LoadedSpaces) FindClosest(pos *cmath.Vec3) (uuid.UUID, cmath.Vec3) {
 		v  cmath.Vec3
 	)
 
-	ls.spaces.Mu.Lock()
-	defer ls.spaces.Mu.Unlock()
+	ls.spaces.Mu.RLock()
+	defer ls.spaces.Mu.RUnlock()
 
 	for id0, space := range ls.spaces.Data {
 		if space.isDynamic {
