@@ -132,16 +132,16 @@ type eraEvent struct {
 }
 
 type sessionEvent struct {
-	CurrentSessionIndex    int    `json:"currentSessionIndex"`
-	CurrentEra             int    `json:"currentEra"`
-	TotalRewardPointsInEra string `json:"totalRewardPointsInEra"`
-	CurrentSlotInSession   int    `json:"currentSlotInSession"`
-	SlotsPerSession        int    `json:"slotsPerSession"`
-	CurrentSlotInEra       int    `json:"currentSlotInEra"`
-	SlotsPerEra            int    `json:"slotsPerEra"`
-	SessionsPerEra         int    `json:"sessionsPerEra"`
-	ActiveEraStart         int64  `json:"activeEraStart"`
-	SlotDuration           int    `json:"slotDuration"`
+	CurrentSessionIndex    int   `json:"currentSessionIndex"`
+	CurrentEra             int   `json:"currentEra"`
+	TotalRewardPointsInEra int   `json:"totalRewardPointsInEra"`
+	CurrentSlotInSession   int   `json:"currentSlotInSession"`
+	SlotsPerSession        int   `json:"slotsPerSession"`
+	CurrentSlotInEra       int   `json:"currentSlotInEra"`
+	SlotsPerEra            int   `json:"slotsPerEra"`
+	SessionsPerEra         int   `json:"sessionsPerEra"`
+	ActiveEraStart         int64 `json:"activeEraStart"`
+	SlotDuration           int   `json:"slotDuration"`
 }
 
 type rewardEvent struct {
@@ -283,7 +283,8 @@ func (ksm *Kusama) DeleteBlockInfo(id TBlockID) error {
 func (ksm *Kusama) WriteBestBlock(id uint32) error {
 	if id > ksm.bestBlock {
 		ksm.bestBlock = id
-		_, err := ksm.world.GetStorage().DB.Exec(writeBestBlockQuery,
+		_, err := ksm.world.GetStorage().DB.Exec(
+			writeBestBlockQuery,
 			utils.BinId(ksm.world.GetId()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
 		)
 		return err
@@ -502,7 +503,11 @@ func (ksm *Kusama) BlockFinalizationCallback(client mqtt.Client, message mqtt.Me
 			bid := ksm.blocks[blockID].id
 			go func() {
 				if err := ksm.UnSpawnBlock(bid); err != nil {
-					log.Error(errors.WithMessagef(err, "Kusama: BlockFinalizationCallback: failed to unspawn block: %s", bid))
+					log.Error(
+						errors.WithMessagef(
+							err, "Kusama: BlockFinalizationCallback: failed to unspawn block: %s", bid,
+						),
+					)
 				}
 			}()
 			time.Sleep(time.Millisecond * 30)
@@ -525,13 +530,27 @@ func (ksm *Kusama) Run() error {
 		return errors.WithMessage(err, "failed to load blocks")
 	}
 
-	ksm.world.SafeSubscribe("harvester/kusama/block-creation-event", 2, safemqtt.LogMQTTMessageHandler("block creation", ksm.BlockCreationCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/block-finalized-event", 2, safemqtt.LogMQTTMessageHandler("block finalized", ksm.BlockFinalizationCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/slash-event", 2, safemqtt.LogMQTTMessageHandler("slash", ksm.SlashCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/reward-event", 2, safemqtt.LogMQTTMessageHandler("reward", ksm.RewardCallback))
+	ksm.world.SafeSubscribe(
+		"harvester/kusama/block-creation-event", 2,
+		safemqtt.LogMQTTMessageHandler("block creation", ksm.BlockCreationCallback),
+	)
+	ksm.world.SafeSubscribe(
+		"harvester/kusama/block-finalized-event", 2,
+		safemqtt.LogMQTTMessageHandler("block finalized", ksm.BlockFinalizationCallback),
+	)
+	ksm.world.SafeSubscribe(
+		"harvester/kusama/slash-event", 2, safemqtt.LogMQTTMessageHandler("slash", ksm.SlashCallback),
+	)
+	ksm.world.SafeSubscribe(
+		"harvester/kusama/reward-event", 2, safemqtt.LogMQTTMessageHandler("reward", ksm.RewardCallback),
+	)
 	ksm.world.SafeSubscribe("harvester/kusama/era", 2, safemqtt.LogMQTTMessageHandler("era", ksm.EraCallback))
-	ksm.world.SafeSubscribe("harvester/kusama/session", 2, safemqtt.LogMQTTMessageHandler("session", ksm.SessionCallback))
-	ksm.world.SafeSubscribe("updates/events/changed", 2, safemqtt.LogMQTTMessageHandler("events changed", ksm.SpaceChangedCallback))
+	ksm.world.SafeSubscribe(
+		"harvester/kusama/session", 2, safemqtt.LogMQTTMessageHandler("session", ksm.SessionCallback),
+	)
+	ksm.world.SafeSubscribe(
+		"updates/events/changed", 2, safemqtt.LogMQTTMessageHandler("events changed", ksm.SpaceChangedCallback),
+	)
 
 	time.Sleep(time.Duration(1<<63 - 1))
 
@@ -657,7 +676,8 @@ func (ksm *Kusama) EvClock() error {
 		ksm.NextEvent = events[0]
 		ff := strconv.FormatInt(time.Until(ksm.NextEvent.start).Milliseconds(), 10)
 		log.Warnf(
-			"EvClock: updatimg timer state to %s (now %s) , diff: %s", ksm.NextEvent.start.String(), time.Now().String(), ff,
+			"EvClock: updatimg timer state to %s (now %s) , diff: %s", ksm.NextEvent.start.String(),
+			time.Now().String(), ff,
 		)
 		log.Warnf(
 			"EvClock: updatimg timer state (UTC) to %s (now %s) , diff: %s", ksm.NextEvent.start.UTC().String(),
