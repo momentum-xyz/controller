@@ -1,7 +1,7 @@
 package socket
 
 import (
-	"sync"
+	"github.com/sasha-s/go-deadlock"
 	"time"
 
 	"github.com/momentum-xyz/controller/internal/logger"
@@ -34,7 +34,7 @@ type Connection struct {
 	OnPumpEnd func()
 	stopChan  chan bool
 	canWrite  utils.TAtomBool
-	mu        *sync.Mutex
+	mu        *deadlock.RWMutex
 	conn      *websocket.Conn
 	closed    bool
 }
@@ -81,7 +81,7 @@ func NewConnection(conn *websocket.Conn) *Connection {
 		buffer:    queue.New(),
 		OnReceive: OnReceiveStub,
 		OnPumpEnd: OnPumpEndStub,
-		mu:        new(sync.Mutex),
+		mu:        new(deadlock.RWMutex),
 		conn:      conn,
 	}
 	c.canWrite.Set(false)
@@ -93,8 +93,7 @@ func (c *Connection) StartReadPump() {
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(
 		func(string) error {
-			c.conn.SetReadDeadline(time.Now().Add(pongWait))
-			return nil
+			return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		},
 	)
 	log.Debug("Starting read pump")
@@ -106,15 +105,15 @@ func (c *Connection) StartReadPump() {
 				case websocket.CloseNormalClosure,
 					websocket.CloseGoingAway,
 					websocket.CloseNoStatusReceived:
-					log.Infof("websocket closed by client: %v", err)
+					log.Infof("websocket closed by client: %s", err)
 					return
 				}
 			}
-			log.Errorf("error: reading message fron connection: %v", err)
+			log.Error(errors.WithMessage(err, "Connection: StartReadPump: failed to read message fron connection"))
 			break
 		}
 		if messageType != websocket.BinaryMessage {
-			log.Error("error: wrong incoming message type")
+			log.Errorf("Connection: StartReadPump: wrong incoming message type: %d", messageType)
 		} else {
 			c.OnReceive(posbus.MsgFromBytes(message))
 		}
@@ -130,15 +129,16 @@ func (c *Connection) EnableWriting() {
 }
 
 func (c *Connection) StartWritePump() {
+	pingTicker := time.NewTicker(pingPeriod)
 	defer func() {
 		c.OnPumpEnd()
+		pingTicker.Stop()
 		// c.conn.Close()
 		log.Info("End of IO pump")
 	}()
 
 	log.Info("Starting WritePump")
 
-	pingTicker := time.NewTicker(pingPeriod)
 	// send goroutine
 	for {
 		select {
@@ -146,25 +146,24 @@ func (c *Connection) StartWritePump() {
 			if !ok {
 				c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-					log.Error(err)
-					return
+					log.Warn(errors.WithMessagef(err, "Connection: StartWritePump: failed to write close message"))
 				}
-			} else if c.canWrite.Get() {
+				return
+			}
+			if c.canWrite.Get() {
 				for c.buffer.Length() > 0 {
-					err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage))
-					if err != nil {
+					if err := c.SendDirectly(utils.GetFromAny[*websocket.PreparedMessage](c.buffer.Remove(), nil)); err != nil {
 						return
 					}
 				}
-				err := c.SendDirectly(message)
-				if err != nil {
+				if err := c.SendDirectly(message); err != nil {
 					return
 				}
 			} else {
 				if c.buffer.Length() < maxBufferSize {
 					c.buffer.Add(message)
 				} else {
-					log.Error(errors.New("Buffer full, dropping connection!"))
+					log.Error(errors.New("Connection: StartWritePump:: buffer full, dropping connection!"))
 					return
 				}
 			}
@@ -175,8 +174,7 @@ func (c *Connection) StartWritePump() {
 			}
 			if c.canWrite.Get() {
 				for c.buffer.Length() > 0 {
-					err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage))
-					if err != nil {
+					if err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage)); err != nil {
 						return
 					}
 				}
@@ -188,8 +186,12 @@ func (c *Connection) StartWritePump() {
 }
 
 func (c *Connection) Send(m *websocket.PreparedMessage) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	if m == nil {
+		return
+	}
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if c.closed {
 		return
@@ -198,10 +200,23 @@ func (c *Connection) Send(m *websocket.PreparedMessage) {
 }
 
 func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
-	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-	err := c.conn.WritePreparedMessage(m)
-	if err != nil {
-		log.Errorf("error pushing message: %v", err)
+	if m == nil {
+		return nil
 	}
-	return err
+
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.closed {
+		return nil
+	}
+
+	if err := c.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
+		return errors.WithMessage(err, "failed to set write deadline")
+	}
+	if err := c.conn.WritePreparedMessage(m); err != nil {
+		return errors.WithMessage(err, "failed to write prepared message")
+	}
+
+	return nil
 }

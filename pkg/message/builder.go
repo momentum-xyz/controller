@@ -156,7 +156,9 @@ func (mb *Builder) FinishMessage(
 }
 
 // FinishMessageBytes is used when we want to skip gorilla/websocket.PreparedMessage type
-func (mb *Builder) FinishMessageBytes(builder *flatbuffers.Builder, msgType api.Msg, msgOffset flatbuffers.UOffsetT) (msg, buf []byte) {
+func (mb *Builder) FinishMessageBytes(
+	builder *flatbuffers.Builder, msgType api.Msg, msgOffset flatbuffers.UOffsetT,
+) (msg, buf []byte) {
 	api.FlatBuffMsgStart(builder)
 	api.FlatBuffMsgAddMsgType(builder, msgType)
 	api.FlatBuffMsgAddMsg(builder, msgOffset)

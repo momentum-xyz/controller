@@ -7,6 +7,8 @@ package universe
 import (
 	// STD
 	"encoding/json"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/pkg/errors"
 	_ "net/http/pprof"
 	"strconv"
 	"sync/atomic"
@@ -22,8 +24,6 @@ import (
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 
-	// Third-party
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -44,7 +44,8 @@ type RegRequest struct {
 	// rotation math.Vec3
 }
 
-// Hub maintains the set of active users and broadcasts messages to the users
+// Make sure that WorldController is extension.WorldController - DO NOT REMOVE
+var _ extension.WorldController = (*WorldController)(nil)
 
 // WorldController ...
 type WorldController struct {
@@ -88,7 +89,7 @@ type WorldController struct {
 func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *message.Builder) (*WorldController, error) {
 	wName, err := hub.WorldStorage.GetName(worldID)
 	if err != nil {
-		return nil, err
+		return nil, errors.WithMessage(err, "failed to get world name")
 	}
 
 	controller := WorldController{
@@ -114,14 +115,15 @@ func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *messa
 	go utils.ChanMonitor("world.updateSpace", controller.updateSpace, 3*time.Second)
 
 	if err := controller.SanitizeOnlineUsers(); err != nil {
-		return nil, err
+		log.Error(errors.WithMessage(err, "newWorldController: failed to sanitize online users"))
 	}
-
 	if err := controller.UpdateMeta(); err != nil {
-		return nil, err
+		return nil, errors.WithMessage(err, "failed to update meta")
 	}
 
-	controller.LoadExtensions()
+	if err := controller.LoadExtensions(); err != nil {
+		log.Error(errors.WithMessage(err, "newWorldController: failed to load extension"))
+	}
 
 	controller.spaces.Init()
 
@@ -142,7 +144,7 @@ type StageModeSetMetadata struct {
 func (wc *WorldController) SanitizeOnlineUsers() error {
 	log.Info("Sanitizing online users:", wc.ID)
 	if err := wc.hub.WorldStorage.CleanOnlineUsers(wc.ID); err != nil {
-		return err
+		return errors.WithMessage(err, "failed to clean online users")
 	}
 	return wc.hub.WorldStorage.CleanDynamicMembership(wc.ID)
 
@@ -170,7 +172,7 @@ func (wc *WorldController) SanitizeOnlineUsers() error {
 	// return err
 }
 
-func (wc *WorldController) LoadExtensions() {
+func (wc *WorldController) LoadExtensions() error {
 	log.Info("loading WC Extension Kind: ", wc.Config.Kind)
 	if wc.Config.Kind == "Kusama" {
 		wc.MainExtension = extensions.NewKusama(wc)
@@ -181,53 +183,39 @@ func (wc *WorldController) LoadExtensions() {
 		// Exit ?
 		log.Fatal("Can not load extension", wc.Config.Kind)
 	}
-	wc.MainExtension.Init()
+	return wc.MainExtension.Init()
 }
 
 func (wc *WorldController) UpdateMeta() error {
-	err := func() error {
-		query := `SELECT name FROM spaces WHERE id = ?;`
-		res, err := wc.hub.DB.Query(query, utils.BinId(wc.ID))
-		if err != nil {
-			log.Error(err)
-			return err
-		}
-		defer res.Close()
-		if res.Next() {
-			var name string
-			err = res.Scan(&name)
-			if err != nil {
-				log.Error(err)
-				return err
-			}
-			log.Debug("W Meta:", name)
-			wc.meta.Name = name
-		}
-		return nil
-	}()
-
-	if err != nil {
-		log.Error(err)
-		return err
-	}
-
-	query := `SELECT AVAController,SkyboxController,Decorations,LODs,config FROM world_definition WHERE id = ?;`
+	query := `SELECT name FROM spaces WHERE id = ?;`
 	res, err := wc.hub.DB.Query(query, utils.BinId(wc.ID))
-
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.WithMessagef(err, "failed to get space name: %s", wc.ID)
 	}
 	defer res.Close()
+
+	if res.Next() {
+		var name string
+		if err = res.Scan(&name); err != nil {
+			return errors.WithMessage(err, "failed to scan space name")
+		}
+		log.Debug("W Meta:", name)
+		wc.meta.Name = name
+	}
+
+	query = `SELECT AVAController,SkyboxController,Decorations,LODs,config FROM world_definition WHERE id = ?;`
+	res, err = wc.hub.DB.Query(query, utils.BinId(wc.ID))
+	if err != nil {
+		return errors.WithMessage(err, "failed to load world definition")
+	}
+	defer res.Close()
+
 	if res.Next() {
 		var AVAData, SkyboxData, DecorationsData, LODsData, ConfigData []byte
 		// fmt.Println(res)
-		err = res.Scan(&AVAData, &SkyboxData, &DecorationsData, &LODsData, &ConfigData)
-		if err != nil {
-			log.Error(err)
-			return err
+		if err := res.Scan(&AVAData, &SkyboxData, &DecorationsData, &LODsData, &ConfigData); err != nil {
+			return errors.WithMessage(err, "failed to scan world definition")
 		}
-
 		wc.meta.AvatarController, err = uuid.FromBytes(AVAData)
 		if err != nil {
 			wc.meta.AvatarController = uuid.Nil
@@ -238,21 +226,21 @@ func (wc *WorldController) UpdateMeta() error {
 			wc.meta.SkyboxController = uuid.Nil
 		}
 
-		err = json.Unmarshal(LODsData, &wc.meta.LODs)
-		if err != nil {
+		if err := json.Unmarshal(LODsData, &wc.meta.LODs); err != nil {
 			wc.meta.LODs = []uint32{1000, 4000, 6400}
 		}
 
-		err = json.Unmarshal(DecorationsData, &wc.meta.Decorations)
-		if err != nil {
+		if err := json.Unmarshal(DecorationsData, &wc.meta.Decorations); err != nil {
 			wc.meta.Decorations = make([]message.DecorationMetadata, 0)
 		}
 		// fmt.Println(string(ConfigData))
-		err = json.Unmarshal(ConfigData, &wc.Config)
+		if err := json.Unmarshal(ConfigData, &wc.Config); err != nil {
+			return errors.WithMessage(err, "failed to unmarshal config")
+		}
 		if r, ok := wc.Config.Spaces["effects_emitter"]; ok {
 			wc.EffectsEmitter = r
 		} else {
-			log.Error("Effects emitter is not defined for world", wc.ID)
+			log.Error("WorldController: UpdateMeta: effects emitter is not defined for world", wc.ID)
 		}
 		// if err != nil {
 		//
@@ -262,39 +250,55 @@ func (wc *WorldController) UpdateMeta() error {
 			wc.ID, wc.meta.Name, wc.meta.AvatarController, wc.meta.SkyboxController, wc.meta.LODs, wc.meta.Decorations,
 		)
 	}
+
 	return nil
 }
 
-func (wc *WorldController) UpdateOnline() {
+func (wc *WorldController) UpdateOnline() error {
 	p := influxdb2.NewPoint(
 		"online_users",
 		map[string]string{"world": wc.influxtag},
 		map[string]interface{}{"count": wc.users.Num()},
 		time.Now(),
 	)
-	_ = wc.hub.WriteInfluxPoint(p)
+	return wc.hub.WriteInfluxPoint(p)
 }
 
-func (wc *WorldController) UpdateOnlineBySpaceId(spaceId uuid.UUID) int64 {
-	if s, ok := wc.spaces.GetPresent(spaceId); ok {
-		onlineUsers := s.GetOnlineUsers()
-		wc.Broadcast(
-			wc.msgBuilder.SetObjectStrings(
-				spaceId, map[string]string{
-					peopleOnlineStringKey: strconv.Itoa(int(onlineUsers)),
-				},
-			),
-		)
-
-		return onlineUsers
+func (wc *WorldController) UpdateOnlineBySpaceId(spaceId uuid.UUID) (int64, error) {
+	s, ok := wc.spaces.GetPresent(spaceId)
+	if !ok {
+		// not necessary an error
+		log.Info("Trying to update online user on non-present space ", spaceId.String())
+		return 0, nil
 	}
-	// not necessary an error
-	log.Info("Trying to update online user on non-present space ", spaceId.String())
-	return 0
+
+	onlineUsers, err := s.GetOnlineUsers()
+	if err != nil {
+		return 0, errors.WithMessage(err, "failed to get online users")
+	}
+
+	wc.Broadcast(
+		wc.msgBuilder.SetObjectStrings(
+			spaceId, map[string]string{
+				peopleOnlineStringKey: strconv.Itoa(int(onlineUsers)),
+			},
+		),
+	)
+
+	return onlineUsers, nil
 }
 
-func (wc *WorldController) UpdateVibesBySpaceId(spaceId uuid.UUID) int64 {
-	vibesCount := wc.spaces.Get(spaceId).CalculateVibes()
+func (wc *WorldController) UpdateVibesBySpaceId(spaceId uuid.UUID) (int64, error) {
+	space, ok := wc.spaces.Get(spaceId)
+	if !ok {
+		return 0, errors.Errorf("failed to get space")
+	}
+
+	vibesCount, err := space.CalculateVibes()
+	if err != nil {
+		return 0, errors.WithMessage(err, "failed to calculate vibes")
+	}
+
 	wc.Broadcast(
 		wc.msgBuilder.SetObjectStrings(
 			spaceId, map[string]string{
@@ -303,68 +307,92 @@ func (wc *WorldController) UpdateVibesBySpaceId(spaceId uuid.UUID) int64 {
 		),
 	)
 
-	return vibesCount
+	return vibesCount, nil
 }
 
-func (wc *WorldController) UserOnlineAction(id uuid.UUID) {
-	wc.InsertOnline(id)
-	wc.InsertWorldDynamicMembership(id)
-}
-
-func (wc *WorldController) InsertOnline(id uuid.UUID) {
-	wc.hub.DB.InsertOnline(id, wc.ID)
-	go wc.UpdateOnline()
-}
-
-func (wc *WorldController) InsertWorldDynamicMembership(id uuid.UUID) {
-	querybase := `INSERT INTO user_spaces_dynamic (spaceId,UserId) VALUES (?,?) ON DUPLICATE KEY UPDATE spaceId=?;`
-
-	_, err := wc.hub.DB.Exec(querybase, utils.BinId(wc.ID), utils.BinId(id), utils.BinId(wc.ID))
-
-	if err != nil {
-		log.Warnf("error: %+v", err)
+func (wc *WorldController) UserOnlineAction(id uuid.UUID) error {
+	if err := wc.InsertOnline(id); err != nil {
+		return errors.WithMessage(err, "failed to insert online")
 	}
-	go wc.UpdateOnline()
+	return wc.InsertWorldDynamicMembership(id)
 }
 
-func (wc *WorldController) PositionRelativeToAbsolute(spaceID uuid.UUID, v cmath.Vec3) cmath.Vec3 {
+func (wc *WorldController) InsertOnline(id uuid.UUID) error {
+	if err := wc.hub.DB.InsertOnline(id, wc.ID); err != nil {
+		return errors.WithMessagef(err, "failed to insert online to db: %s", id)
+	}
+	go func() {
+		if err := wc.UpdateOnline(); err != nil {
+			log.Warn(errors.WithMessage(err, "WorldController: InsertOnline: failed update online"))
+		}
+	}()
+	return nil
+}
+
+func (wc *WorldController) InsertWorldDynamicMembership(id uuid.UUID) error {
+	query := `INSERT INTO user_spaces_dynamic (spaceId,UserId) VALUES (?,?) ON DUPLICATE KEY UPDATE spaceId=?;`
+	_, err := wc.hub.DB.Exec(query, utils.BinId(wc.ID), utils.BinId(id), utils.BinId(wc.ID))
+	if err != nil {
+		return errors.WithMessagef(err, "failed to exec db: %s", id)
+	}
+	go func() {
+		if err := wc.UpdateOnline(); err != nil {
+			log.Warn(errors.WithMessage(err, "WorldController: InsertWorldDynamicMembership: failed to update online"))
+		}
+	}()
+	return nil
+}
+
+func (wc *WorldController) PositionRelativeToAbsolute(spaceID uuid.UUID, v cmath.Vec3) (cmath.Vec3, error) {
 	v2, err := wc.spaces.GetPos(spaceID)
 	if err != nil {
-		log.Warnf("error: %+v", err)
-		return cmath.Vec3{}
+		return cmath.MNan32Vec3(), errors.WithMessage(err, "failed to get pos")
 	}
 
 	v.Plus(v2)
-	return v
+	return v, nil
 }
 
-func (wc *WorldController) AddUserToWorld(u *User) {
+func (wc *WorldController) AddUserToWorld(u *User) error {
 	log.Info("(HHHHH)")
 	wc.users.Add(u)
 	log.Info("User added to the world")
+
+	space, ok := wc.spaces.Get(wc.ID)
+	if !ok {
+		return errors.Errorf("failed to get space: %s", wc.ID)
+	}
 
 	if wc.spawnNeedUpdate.Get() {
 		if wc.spaces.Num() > 0 {
 			log.Info("***********Update")
 			defArray := make([]message.ObjectDefinition, wc.spaces.Num())
 			i := 0
-			wc.spaces.Get(wc.ID).PushObjDef(defArray, &i)
+			space.PushObjDef(defArray, &i)
 			wc.spawnMsg.Store(wc.msgBuilder.MsgAddStaticObjects(defArray))
 			wc.spawnNeedUpdate.Set(false)
 		}
 	}
-	u.connection.SendDirectly(wc.spawnMsg.Load().(*websocket.PreparedMessage))
+	if err := u.connection.SendDirectly(wc.spawnMsg.Load().(*websocket.PreparedMessage)); err != nil {
+		return errors.WithMessage(err, "failed to send spawn msg")
+	}
 	// fmt.Println(len(wc.spaces))
-	wc.spaces.Get(wc.ID).RecursiveSendAllAttributes(u.connection)
-	wc.spaces.Get(wc.ID).RecursiveSendAllStrings(u.connection)
-	wc.spaces.Get(wc.ID).RecursiveSendAllTextures(u.connection)
+	space.RecursiveSendAllAttributes(u.connection)
+	space.RecursiveSendAllStrings(u.connection)
+	space.RecursiveSendAllTextures(u.connection)
 	wc.MainExtension.InitUser(u)
+
+	return nil
 }
 
-func (wc *WorldController) run() {
+func (wc *WorldController) run() error {
 	log.Info("Starting to serve world: ", wc.ID)
 	if wc.MainExtension != nil {
-		go wc.MainExtension.Run()
+		go func() {
+			if err := wc.MainExtension.Run(); err != nil {
+				log.Error(errors.WithMessage(err, "WorldController: run: failed to run main extension"))
+			}
+		}()
 	}
 
 	// fireworksTopic := fmt.Sprintf("/control/%v/fireworks", wc.ID.String())
@@ -392,35 +420,45 @@ func (wc *WorldController) run() {
 			// fmt.Println(color.Red, "UpdateSpace", color.Reset)
 			if o, ok := wc.spaces.GetPresent(id); ok {
 				log.Debug("Cal space update")
-				err := o.UpdateSpace()
-				if err != nil {
-					log.Errorf("%s update error: %+v", o.id.String(), err)
+				if err := o.UpdateSpace(); err != nil {
+					log.Error(errors.WithMessagef(err, "WorldController: run: failed to update space: %s", id))
 				}
 			}
 		case id := <-wc.unregisterSpace:
 			// fmt.Println(color.Red, "RegSpace", color.Reset)
 			// log.Infof("unreg request: %s", id)
-			wc.spaces.Unload(id)
-
+			if err := wc.spaces.Unload(id); err != nil {
+				log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unload space: %s", id))
+			}
 		case client := <-wc.registerUser:
 			// log.Info("Reg User0")
-
 			log.Info("Spawn flow: got reg request for", client.ID)
-			go client.Register(wc)
+			go func() {
+				if err := client.Register(wc); err != nil {
+					log.Warn(errors.WithMessagef(err, "WorldController: run: failed to register client: %s", client.ID))
+				}
+			}()
 			log.Info("Spawn flow: reg done for", client.ID)
 			n := len(wc.registerUser)
 			for i := 0; i < n; i++ {
 				client := <-wc.registerUser
-				go client.Register(wc)
+				go func() {
+					if err := client.Register(wc); err != nil {
+						log.Warn(errors.WithMessagef(err, "WorldController: run: failed to register client: %s", client.ID))
+					}
+				}()
 			}
-
-			log.Info("Reg UserDone0")
+			log.Info("Reg UserDone")
 		case client := <-wc.unregisterUser:
-			client.Unregister(wc)
+			if err := client.Unregister(wc); err != nil {
+				log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
+			}
 			n := len(wc.unregisterUser)
 			for i := 0; i < n; i++ {
 				client := <-wc.unregisterUser
-				client.Unregister(wc)
+				if err := client.Unregister(wc); err != nil {
+					log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
+				}
 			}
 		}
 		// logger.Logln(4, "Pass loop")
@@ -429,7 +467,7 @@ func (wc *WorldController) run() {
 
 // signal about removed ConnectedUsers
 
-func (wc *WorldController) SafeSubscribe(topic string, qos byte, callback func(client mqtt.Client, msg mqtt.Message)) {
+func (wc *WorldController) SafeSubscribe(topic string, qos byte, callback mqtt.MessageHandler) {
 	wc.hub.mqtt.SafeSubscribe(topic, qos, callback)
 }
 
@@ -441,8 +479,11 @@ func (wc *WorldController) BroadcastObjects(array []message.ObjectDefinition) {
 	wc.users.Broadcast(wc.msgBuilder.MsgAddStaticObjects(array))
 }
 
-func (wc *WorldController) GetSpacePosition(id uuid.UUID) cmath.Vec3 {
-	return wc.spaces.Get(id).position
+func (wc *WorldController) GetSpacePosition(id uuid.UUID) (cmath.Vec3, error) {
+	if space, ok := wc.spaces.Get(id); ok {
+		return space.position, nil
+	}
+	return cmath.MNan32Vec3(), errors.Errorf("failed to get space: %s", id)
 }
 
 func (wc *WorldController) GetSpacePresent(id uuid.UUID) bool {
@@ -470,12 +511,17 @@ func (wc *WorldController) GetId() uuid.UUID {
 	return wc.ID
 }
 
-func (wc *WorldController) SetSpaceTitle(spaceId uuid.UUID, title string) {
-	space := wc.spaces.Get(spaceId)
+func (wc *WorldController) SetSpaceTitle(spaceId uuid.UUID, title string) error {
+	space, ok := wc.spaces.Get(spaceId)
+	if !ok {
+		return errors.Errorf("failed to get space: %s", spaceId)
+	}
 	space.Name = title
 	defArray := make([]message.ObjectDefinition, 1)
 	space.filObjDef(&defArray[0])
 	wc.BroadcastObjects(defArray)
+
+	return nil
 }
 
 // TODO: temporary, to move later
@@ -502,6 +548,3 @@ func (wc *WorldController) SetSpaceTitle(spaceId uuid.UUID, title string) {
 //
 //	return "", errors.New("wrong")
 // }
-
-// Make sure that WorldController is extension.WorldController - DO NOT REMOVE
-var _ extension.WorldController = (*WorldController)(nil)

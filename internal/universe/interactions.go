@@ -22,21 +22,29 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 	case posbus.TriggerEnteredSpace:
 		targetUUID := m.Target()
 		u.currentSpace.Store(targetUUID)
-		u.world.hub.DB.InsertOnline(u.ID, targetUUID)
-		u.world.UpdateOnlineBySpaceId(targetUUID)
+		if err := u.world.hub.DB.InsertOnline(u.ID, targetUUID); err != nil {
+			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger entered space: failed to insert one"))
+		}
+		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
+			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger entered space: failed to update online by space id"))
+		}
 	case posbus.TriggerLeftSpace:
 		targetUUID := m.Target()
 		u.currentSpace.Store(uuid.Nil)
 		if err := u.world.hub.DB.RemoveOnline(u.ID, targetUUID); err != nil {
-			log.Warn(errors.WithMessage(err, "InteractionHandler: failed to remove online from db"))
+			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger left space: failed to remove online from db"))
 		}
-		u.world.UpdateOnlineBySpaceId(targetUUID)
+		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
+			log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to update online by space id"))
+		}
 	case posbus.TriggerHighFive:
-		u.HandleHighFive(m)
+		if err := u.HandleHighFive(m); err != nil {
+			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger high fives: failed to handle high five"))
+		}
 	case posbus.TriggerStake:
 		u.HandleStake(m)
 	default:
-		log.Warn("Got unknown interaction for user:", u.ID, "kind:", kind)
+		log.Warn("InteractionHandler: got unknown interaction for user:", u.ID, "kind:", kind)
 	}
 }
 
@@ -59,7 +67,7 @@ func (u *User) HandleStake(m *posbus.TriggerInteraction) {
 	u.world.Broadcast(effect.WebsocketMessage())
 }
 
-func (u *User) HandleHighFive(m *posbus.TriggerInteraction) {
+func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 	targetUUID := m.Target()
 	log.Info("Got H5 from user:", u.ID, "to user:", targetUUID)
 
@@ -69,7 +77,7 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) {
 				posbus.DestinationReact, posbus.NotificationTextMessage, 0, "You can't high-five yourself",
 			).WebsocketMessage(),
 		)
-		return
+		return nil
 	}
 
 	target, found := u.world.users.Get(targetUUID)
@@ -79,19 +87,25 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) {
 				posbus.DestinationReact, posbus.NotificationTextMessage, 0, "Receiving user not found",
 			).WebsocketMessage(),
 		)
-		return
+		return nil
 	}
 
-	u.world.hub.DB.UpdateHighFives(u.ID, targetUUID)
-	uname := u.world.hub.DB.GetUserName(u.ID)
+	if err := u.world.hub.DB.UpdateHighFives(u.ID, targetUUID); err != nil {
+		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to update high fives"))
+	}
+	uname, err := u.world.hub.UserStorage.GetUserName(u.ID)
+	if err != nil {
+		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get user name"))
+	}
 
-	msg := make(map[string]interface{})
-	msg["senderId"] = u.ID.String()
-	msg["receiverId"] = targetUUID.String()
-	msg["message"] = uname + " has high-fived you!"
+	msg := map[string]interface{}{
+		"senderId":   u.ID.String(),
+		"receiverId": targetUUID.String(),
+		"message":    uname + " has high-fived you!",
+	}
 	data, err := json.Marshal(&msg)
 	if err != nil {
-		return
+		return errors.WithMessage(err, "failed to marshal data")
 	}
 
 	target.connection.Send(
@@ -108,4 +122,6 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) {
 	effect := posbus.NewTriggerTransitionalBridgingEffectsOnPositionMsg(1)
 	effect.SetEffect(0, u.world.EffectsEmitter, pputils.Vec3(*u.pos), pputils.Vec3(*target.pos), 1001)
 	u.world.Broadcast(effect.WebsocketMessage())
+
+	return nil
 }

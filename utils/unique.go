@@ -16,6 +16,6 @@ func (u Unique[V]) Value() V {
 	return u.val
 }
 
-func (u Unique[V]) Equal(unique Unique[V]) bool {
+func (u Unique[V]) Equals(unique Unique[V]) bool {
 	return u.cmp == unique.cmp
 }

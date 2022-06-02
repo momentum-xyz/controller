@@ -2,21 +2,22 @@ package utils
 
 import (
 	"database/sql"
-	"github.com/google/uuid"
 
 	"github.com/momentum-xyz/controller/internal/logger"
+
+	"github.com/google/uuid"
+	"github.com/pkg/errors"
 )
 
 var log = logger.L()
 
-func LoadRow(rows *sql.Rows) map[string]interface{} {
+func LoadRow(rows *sql.Rows) (map[string]interface{}, error) {
 	if !rows.Next() {
-		return nil // possible bug ?
+		return nil, ErrNotFound // possible bug ?
 	}
 	columns, err := rows.Columns()
 	if err != nil {
-		log.Errorf("failed to load row: %+v", err)
-		return nil
+		return nil, errors.WithMessage(err, "failed to get columns")
 	}
 	count := len(columns)
 	values := make([]interface{}, count)
@@ -26,8 +27,9 @@ func LoadRow(rows *sql.Rows) map[string]interface{} {
 		valuePtrs[i] = &values[i]
 	}
 	if err := rows.Scan(valuePtrs...); err != nil {
-		log.Errorf("failed to scan row: %+v", err)
+		return nil, errors.WithMessage(err, "failed to scan rows")
 	}
+
 	entry := make(map[string]interface{})
 	for i, col := range columns {
 		var v interface{}
@@ -40,38 +42,49 @@ func LoadRow(rows *sql.Rows) map[string]interface{} {
 		}
 		entry[col] = v
 	}
-	return entry
+	return entry, nil
 }
 
-func F64FromMap(parametersMap map[string]interface{}, k string, defaultValue float64) float64 {
-	if v1, ok := parametersMap[k]; ok {
-		return v1.(float64)
+func GetFromAny[V any](val any, defaultValue V) V {
+	if val == nil {
+		return defaultValue
+	}
+
+	v, ok := val.(V)
+	if ok {
+		return v
 	}
 
 	return defaultValue
 }
 
-func BoolFromMap(parametersMap map[string]interface{}, k string, defaultValue bool) bool {
-	if v1, ok := parametersMap[k]; ok {
-		return v1.(bool)
+func GetFromAnyMap[K comparable, V any](amap map[K]any, key K, defaultValue V) V {
+	if val, ok := amap[key]; ok {
+		return GetFromAny(val, defaultValue)
 	}
-
 	return defaultValue
 }
 
-func SpaceTypeFromMap(parametersMap map[string]interface{}) uuid.UUID {
+func SpaceTypeFromMap(parametersMap map[string]interface{}) (uuid.UUID, error) {
 	rt, ok := parametersMap["kind"]
-	if !ok || rt.(string) == "default" {
-		return uuid.Nil
+	if !ok {
+		return uuid.Nil, errors.Errorf("kind not found")
 	}
-	kind, err := uuid.Parse(rt.(string))
+	var k string
+	if k, ok = rt.(string); !ok || k == "default" {
+		return uuid.Nil, errors.Errorf("kind is default")
+	}
+	kind, err := uuid.Parse(k)
 	if err != nil {
-		return uuid.Nil
+		return uuid.Nil, errors.WithMessage(err, "failed to parse kind")
 	}
-	return kind
+	return kind, nil
 }
 
-func DbToUuid(f interface{}) uuid.UUID {
-	q, _ := uuid.FromBytes([]byte((f).(string)))
-	return q
+func DbToUuid(f interface{}) (uuid.UUID, error) {
+	q, err := uuid.FromBytes([]byte(GetFromAny(f, "")))
+	if err != nil {
+		return uuid.Nil, errors.WithMessage(err, "failed to parse uuid")
+	}
+	return q, nil
 }
