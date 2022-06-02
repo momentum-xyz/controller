@@ -56,6 +56,7 @@ func NewNetworking(cfg *config.Config) *Networking {
 
 	http.HandleFunc("/posbus", n.HandShake)
 	http.HandleFunc("/config/ui-client", n.cfgUIClient)
+
 	return n
 }
 
@@ -90,15 +91,15 @@ func (n *Networking) cfgUIClient(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(&cfg)
 	if err != nil {
-		err := errors.WithMessage(err, "failed to serve ui client cfg")
-		log.Error(err)
+		err := errors.WithMessage(err, "failed to marshal data")
+		log.Error(errors.WithMessagef(err, "Networking: cfgUIClient"))
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))
 		return
 	}
 
 	if _, err := w.Write(data); err != nil {
-		log.Error(errors.WithMessage(err, "failed to serve ui client cfg"))
+		log.Error(errors.WithMessage(err, "Networking: cfgUIClient: failed to write data"))
 	}
 }
 
@@ -119,7 +120,7 @@ func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
 	URL, _ := url.Parse(string(handshakeObj.Url()))
 	log.Info("URL to use:", URL)
 
-	userIDclaim, _ := uuid.Parse((*claims)["sub"].(string))
+	userIDclaim, _ := uuid.Parse(utils.GetFromAnyMap(*claims, "sub", ""))
 
 	if (userID == userIDclaim) || (userIDclaim.String() == "69e1d7f6-3130-4005-9969-31edf9af9445") || (userIDclaim.String() == "eb50bbc8-ba4e-46a3-a480-a9b30141ce91") {
 		connection := socket.NewConnection(conn)
@@ -177,9 +178,9 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 
 	token := string(handshake.UserToken())
 
-	if err != nil || !auth.VerifyToken(token, n.cfg.Common.IntrospectURL) {
+	if err := auth.VerifyToken(token, n.cfg.Common.IntrospectURL); err != nil {
 		userID := message.DeserializeGUID(handshake.UserId(nil))
-		log.Errorf("error: wrong PreHandShake (invalid token: %v ), aborting connection", userID)
+		log.Errorf("error: wrong PreHandShake (invalid token: %s), aborting connection: %s", userID, err)
 		return nil, nil, false, nil
 	}
 

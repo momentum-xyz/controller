@@ -1,6 +1,7 @@
 package safemqtt
 
 import (
+	"github.com/pkg/errors"
 	// Std
 	"strconv"
 	"time"
@@ -34,12 +35,12 @@ var (
 	}
 	connectLostHandler mqtt.ConnectionLostHandler = func(client mqtt.Client, err error) {
 		// TODO: use proper logger
-		log.Info("Connection to MQTT broker lost: %v\n", err)
+		log.Info("Connection to MQTT broker lost: %s\n", err)
 		client.Connect()
 	}
 )
 
-func InitMQTTClient(cfg *config.MQTT, id string) Client {
+func InitMQTTClient(cfg *config.MQTT, id string) (Client, error) {
 	opts := mqtt.NewClientOptions()
 	opts.AddBroker("tcp://" + cfg.HOST + ":" + strconv.FormatUint(uint64(cfg.PORT), 10))
 	opts.SetClientID("controller" + id)
@@ -53,30 +54,32 @@ func InitMQTTClient(cfg *config.MQTT, id string) Client {
 
 	client := mqtt.NewClient(opts)
 	if token := client.Connect(); token.Wait() && token.Error() != nil {
-		log.Warnf("error: %+v", token.Error())
-		// panic(token.Error())
+		return nil, errors.WithMessage(token.Error(), "failed to connect")
 	}
 
 	return &mqttClient{
 		mutex: deadlock.Mutex{},
 		mqtt:  client,
-	}
+	}, nil
 }
 
 func (m *mqttClient) SafePublish(topic string, qos byte, retained bool, payload interface{}) mqtt.Token {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
 	return m.mqtt.Publish(topic, qos, retained, payload)
 }
 
 func (m *mqttClient) SafeSubscribe(topic string, qos byte, callback mqtt.MessageHandler) mqtt.Token {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
 	return m.mqtt.Subscribe(topic, qos, callback)
 }
 
 func (m *mqttClient) SafeUnsubscribe(topics ...string) mqtt.Token {
 	m.mutex.Lock()
 	defer m.mutex.Unlock()
+
 	return m.mqtt.Unsubscribe(topics...)
 }

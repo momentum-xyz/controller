@@ -1,6 +1,7 @@
 package universe
 
 import (
+	"github.com/momentum-xyz/controller/utils"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -33,7 +34,7 @@ type User struct {
 	isGuest      bool
 }
 
-func (u *User) Register(wc *WorldController) {
+func (u *User) Register(wc *WorldController) error {
 	log.Info("reg user: ", wc.ID)
 
 	if exclient, ok := wc.users.Get(u.ID); ok && exclient.queueID != u.queueID {
@@ -54,12 +55,13 @@ func (u *User) Register(wc *WorldController) {
 			time.Sleep(time.Millisecond * 100)
 			wc.registerUser <- u
 		}()
-		return
+		return nil
 	}
 
 	defer func() {
 		log.Infof("Spawned %s on %s", u.ID, u.world.ID)
 	}()
+
 	// go utils.ChanMonitor("user:"+u.ID.String(), u.connection.send, 3*time.Second)
 	log.Info("Registering user: " + u.ID.String())
 	u.writeLkp = true
@@ -71,7 +73,9 @@ func (u *User) Register(wc *WorldController) {
 	u.pos = (*cmath.Vec3)(unsafe.Add(unsafe.Pointer(&u.posbuf[0]), 16))
 	*u.pos = ipos
 	u.world = wc
-	u.world.UserOnlineAction(u.ID)
+	if err := u.world.UserOnlineAction(u.ID); err != nil {
+		return errors.WithMessagef(err, "failed to handle user online action: %s", u.ID)
+	}
 	u.lastUpdate = int64(0)
 	u.currentSpace.Store(uuid.Nil)
 
@@ -82,11 +86,18 @@ func (u *User) Register(wc *WorldController) {
 
 	log.Info("send world meta")
 	// TODO: Update MetaMSg
-	_ = u.connection.SendDirectly(u.world.metaMsg)
+	if err := u.connection.SendDirectly(u.world.metaMsg); err != nil {
+		return errors.WithMessage(err, "failed to send meta msg")
+	}
 	log.Info("send own position")
-	_ = u.connection.SendDirectly(posbus.NewSendPositionMsg(pputils.Vec3(ipos)).WebsocketMessage())
+	if err := u.connection.SendDirectly(posbus.NewSendPositionMsg(pputils.Vec3(ipos)).WebsocketMessage()); err != nil {
+		return errors.WithMessage(err, "failed to send position")
+	}
 	log.Info("send initial world")
-	u.world.AddUserToWorld(u) // AddToWorld is happening there
+	// AddToWorld is happening there
+	if err := u.world.AddUserToWorld(u); err != nil {
+		return errors.WithMessage(err, "failed to add user to world")
+	}
 	wc.hub.mqtt.SafeSubscribe("user_control/"+wc.ID.String()+"/"+u.ID.String()+"/#", 1, u.MQTTMessageHandler)
 	// remove user from delay remove list
 	if val, ok := u.world.hub.usersForRemoveWithDelay.Load(u.ID); ok {
@@ -97,29 +108,35 @@ func (u *User) Register(wc *WorldController) {
 		time.Sleep(15 * time.Second)
 		u.connection.EnableWriting()
 	}()
+
+	return nil
 }
 
-func (u *User) Unregister(h *WorldController) {
+func (u *User) Unregister(h *WorldController) error {
 	if x, ok := h.users.Get(u.ID); ok && x.queueID == u.queueID {
 		defer func() {
 			log.Warnf("User disconnected %s(%s)", x.name, x.ID.String())
 		}()
+
 		log.Info("Unregistering user")
 		u.world.hub.mqtt.SafeUnsubscribe("user_control/" + u.ID.String() + "/#")
-		func() {
-			h.users.Delete(x.ID)
-		}()
+		h.users.Delete(x.ID)
 		// write last known position
 		if u.writeLkp {
 			anchorId, vector := u.world.spaces.FindClosest(u.pos)
-			u.world.hub.DB.WriteLastKnownPosition(u.ID, u.world.ID, anchorId, &vector, 0)
+			if err := u.world.hub.DB.WriteLastKnownPosition(u.ID, u.world.ID, anchorId, &vector, 0); err != nil {
+				log.Warn(errors.WithMessage(err, "User: Unregister: failed to write last known position"))
+			}
 		}
 		// remove from online_users in DB
-		u.UserOfflineAction()
+		if err := u.UserOfflineAction(); err != nil {
+			log.Warn(errors.WithMessage(err, "User: Unregister: failed to handle offline action"))
+		}
 		// close connection
 		u.connection.Close()
 		h.users.UserLeft(u.ID)
 	}
+	return nil
 }
 
 func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
@@ -149,24 +166,26 @@ func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 	}
 }
 
-func (u *User) UserOfflineAction() {
+func (u *User) UserOfflineAction() error {
 	log.Info("User: UserOfflineAction:", u.ID.String())
 	if err := u.world.hub.DB.RemoveOnline(u.ID, u.world.ID); err != nil {
-		log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove online from db by world id"))
+		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by world id"))
 	}
-	cspace := u.currentSpace.Load().(uuid.UUID)
+	cspace := utils.GetFromAny(u.currentSpace.Load(), uuid.Nil)
 	if cspace != uuid.Nil {
 		if err := u.world.hub.DB.RemoveOnline(u.ID, cspace); err != nil {
-			log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove online from db by space"))
+			log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by space"))
 		}
 		// u.currentSpace. = uuid.Nil
 	}
 	if err := u.world.hub.DB.RemoveDynamicWorldMembership(u.ID, u.world.ID); err != nil {
-		log.Warn(errors.WithMessage(err, "UserOfflineAction: failed to remove membership from db"))
+		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove membership from db"))
 	}
 	if u.isGuest {
 		u.world.hub.RemoveUserWithDelay(u.ID, defaultDelayForUsersForRemove)
 	}
+
+	return nil
 }
 
 func (u *User) OnMessage(msg *posbus.Message) {
@@ -182,13 +201,16 @@ func (u *User) OnMessage(msg *posbus.Message) {
 	case posbus.MsgTypeSendPosition:
 		u.UpdatePosition(msg.AsSendPos())
 	case posbus.MsgTypeSwitchWorld:
-		u.SwitchWorld(msg.AsSwitchWorld().World())
+		if err := u.SwitchWorld(msg.AsSwitchWorld().World()); err != nil {
+			log.Error(errors.WithMessage(err, "User: OnMessage: failed to switch world"))
+		}
 	case posbus.MsgTypeSignal:
 		u.HandleSignals(msg.AsSignal().Signal())
 	default:
 		log.Warn("Got unknown message for user:", u.ID, "msg:", msg)
 	}
 }
+
 func (u *User) HandleSignals(s posbus.Signal) {
 	switch s {
 	case posbus.SignalReady:
@@ -197,28 +219,32 @@ func (u *User) HandleSignals(s posbus.Signal) {
 	}
 }
 
-func (u *User) SwitchWorld(newWorldId uuid.UUID) {
+func (u *User) SwitchWorld(newWorldId uuid.UUID) error {
 	if newWorldId == u.world.ID {
-		return
+		return nil
 	}
 	log.Info("Request to teleport to", newWorldId)
 
-	world := u.world.hub.GetWorldController(newWorldId)
-
-	if world == nil {
-		return
+	_, err := u.world.hub.GetWorldController(newWorldId)
+	if err != nil {
+		return errors.WithMessage(err, "failed to get world controller")
 	}
 
 	u.world.users.Delete(u.ID)
 
 	anchorId, vector := u.world.spaces.FindClosest(u.pos)
-	u.world.hub.DB.WriteLastKnownPosition(u.ID, u.world.ID, anchorId, &vector, 0)
+	if err := u.world.hub.DB.WriteLastKnownPosition(u.ID, u.world.ID, anchorId, &vector, 0); err != nil {
+		log.Warn(errors.WithMessage(err, "SwitchWorld: SwitchWorld: failed to write last known position"))
+	}
 
 	spaceId, v := u.world.hub.DB.GetUserSpawnPositionInWorld(u.ID, newWorldId)
 	u.writeLkp = false
-	u.world.hub.DB.WriteLastKnownPosition(u.ID, newWorldId, spaceId, &v, 1)
+	if err := u.world.hub.DB.WriteLastKnownPosition(u.ID, newWorldId, spaceId, &v, 1); err != nil {
+		log.Warn(errors.WithMessage(err, "SwitchWorld: SwitchWorld: failed to write last known position"))
+	}
 
 	u.connection.Close()
+	return nil
 	// oldworld := u.world
 	// TODO: u must be changed, as currently it does not write last position in previous world
 	// time.Sleep(100 * time.Millisecond)

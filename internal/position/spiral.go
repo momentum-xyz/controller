@@ -23,10 +23,10 @@ type spiral struct {
 
 func NewSpiral(parameterMap map[string]interface{}) Algo {
 	return &spiral{
-		Angle:  utils.F64FromMap(parameterMap, "angle", spiralAngleDefaultValue),
-		Scale:  utils.F64FromMap(parameterMap, "spiralScale", spiralScaleDefaultValue),
-		R:      utils.F64FromMap(parameterMap, "R", spiralRadiusDefaultValue),
-		VShift: utils.F64FromMap(parameterMap, "Vshift", spiralVShiftDefaultValue),
+		Angle:  utils.GetFromAnyMap(parameterMap, "angle", spiralAngleDefaultValue),
+		Scale:  utils.GetFromAnyMap(parameterMap, "spiralScale", spiralScaleDefaultValue),
+		R:      utils.GetFromAnyMap(parameterMap, "R", spiralRadiusDefaultValue),
+		VShift: utils.GetFromAnyMap(parameterMap, "Vshift", spiralVShiftDefaultValue),
 	}
 }
 

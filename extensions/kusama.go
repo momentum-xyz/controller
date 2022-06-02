@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"strconv"
@@ -16,13 +17,15 @@ import (
 	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
+	"github.com/momentum-xyz/controller/internal/mqtt"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
-	// Third-Party
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
+	// Third-Party
+	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
 )
 
@@ -41,6 +44,17 @@ type EventStruct struct {
 	start      time.Time
 	image_hash string
 }
+
+const (
+	writeBestBlockQuery               = `INSERT INTO stats(worldId, name, columnId, value) VALUES(?,'BEST BLOCK',1,?) ON DUPLICATE KEY UPDATE columnId=1,value=?;`
+	writeFinalizedBlockQuery          = `INSERT INTO stats(worldId, name, columnId, value) VALUES(?,'FINALIZED BLOCK',1,?) ON DUPLICATE KEY UPDATE columnId=1,value=?;`
+	getValidatorSpaceIDByAddressQuery = `SELECT spaceId FROM space_attributes WHERE attributeId=? AND value =?;`
+	getSpaceNameByIDQuery             = `SELECT name FROM spaces WHERE id=?;`
+	evClockQuery                      = `SELECT sie.title, sie.start, sie.image_hash FROM space_integration_events sie
+											WHERE sie.start >= NOW()
+											ORDER BY sie.start
+											LIMIT ?`  // TODO: remove limit
+)
 
 var log = logger.L()
 
@@ -101,6 +115,7 @@ type kusamaBlockCreatedEvent struct {
 	// Extrinsics      []interface{} `json:"extrinsics"`
 	ExtrinsicsCount int `json:"extrinsicsCount"`
 }
+
 type kusamaBlockFinalizedEvent struct {
 	Number    TBlockID `json:"number"`
 	AuthorId  string   `json:"authorId"`
@@ -140,122 +155,113 @@ type slashEvent struct {
 	Amount    uint32 `json:"amount"`
 }
 
-func (ksm *Kusama) Init() bool {
+func (ksm *Kusama) Init() error {
 	// When Init is called, world.structure is not available yet!
 	// anything which relies on presence of that - should be done in Run()
 	var ok bool
 	cfg := ksm.world.GetConfig()
 	// os.Exit(2)
 	if ksm.TransactionCore, ok = cfg.Spaces["transaction_core"]; !ok {
-		log.Warn("No transaction_core in Kusama config")
-		return false
+		return errors.New("No transaction_core in Kusama config")
 	}
 
 	if ksm.TransactionCore, ok = cfg.Spaces["transaction_core"]; !ok {
-		log.Warn("No transaction_core in Kusama config")
-		return false
+		return errors.New("No transaction_core in Kusama config")
 	}
+
 	if ksm.EraClock, ok = cfg.Spaces["era_clock"]; !ok {
-		log.Info("No era_clock in Kusama config")
-		return false
+		return errors.New("No era_clock in Kusama config")
 	}
 
 	if ksm.RelayChain, ok = cfg.Spaces["blockchain"]; !ok {
-		log.Warn("No blockchain in Kusama config")
-		return false
+		return errors.New("No blockchain in Kusama config")
 	}
+
 	if ksm.RewardsAccumulator, ok = cfg.Spaces["rewards_accumulator"]; !ok {
-		log.Warn("No rewards_accumulator in Kusama config")
-		return false
+		return errors.New("No rewards_accumulator in Kusama config")
 	}
+
 	if ksm.TransactionBlockSpaceType, ok = cfg.SpaceTypes["transaction_block"]; !ok {
-		log.Warn("No transaction_block in Kusama config")
-		return false
+		return errors.New("No transaction_block in Kusama config")
 	}
 
 	if ksm.ValidatorSpaceType, ok = cfg.SpaceTypes["validator_node"]; !ok {
-		log.Warn("No validator_node in Kusama config")
-		return false
+		return errors.New("No validator_node in Kusama config")
 	}
 
 	if ksm.WorldLobby, ok = cfg.Spaces["world_lobby"]; !ok {
-		log.Warn("No world_lobby in Kusama config")
-		return false
+		return errors.New("No world_lobby in Kusama config")
 	}
+
 	if ksm.EventsClock, ok = cfg.Spaces["events_clock"]; !ok {
-		log.Warn("No events_clock in Kusama config")
-		return false
+		return errors.New("No events_clock in Kusama config")
 	}
 
 	storage := ksm.world.GetStorage()
 	r, err := storage.QuerySingleByUUID("space_types", ksm.TransactionBlockSpaceType)
 	if err != nil {
-		log.Warnf("check error: %+v", err)
-		return false
+		return errors.WithMessage(err, "failed to get transaction block space type")
 	}
 	var s interface{}
 	if s, ok = r["asset"]; !ok {
-		return false
+		return errors.New("failed to get asset")
 	}
-	ksm.TransactionBlockAsset, err = uuid.FromBytes([]byte(s.(string)))
+	ksm.TransactionBlockAsset, err = uuid.FromBytes([]byte(utils.GetFromAny(s, "")))
 	if err != nil {
-		log.Warnf("check error: %+v", err)
-		return false
+		return errors.WithMessage(err, "failed to get transaction block asset")
 	}
 
 	if s, ok = r["infoui_id"]; !ok {
-		return false
+		return errors.New("failed to get info ui id")
 	}
-	ksm.BlockInfoUI, err = uuid.FromBytes([]byte(s.(string)))
+	ksm.BlockInfoUI, err = uuid.FromBytes([]byte(utils.GetFromAny(s, "")))
 	if err != nil {
-		log.Warnf("check error: %+v", err)
-		return false
+		return errors.WithMessage(err, "failed to get block info ui")
 	}
 
 	r, err = storage.QuerySingleByField("attributes", "name", "kusama_validator_id")
 	if err != nil {
-		log.Warn("error: ", err)
-		return false
+		return errors.WithMessage(err, "failed to get kusama validator id")
 	}
 	if s, ok = r["id"]; !ok {
-		return false
+		return errors.New("failed to get kusama validator id attribute")
 	}
-	ksm.ValidatorAddressIdAttribute, err = uuid.FromBytes([]byte(s.(string)))
+	ksm.ValidatorAddressIdAttribute, err = uuid.FromBytes([]byte(utils.GetFromAny(s, "")))
 	if err != nil {
-		log.Warnf("check error: %+v", err)
-		return false
+		return errors.WithMessage(err, "failed to get validator address id attribute")
 	}
 
 	extStorage := ksm.world.GetExtensionStorage()
-	file := extStorage + "/kusama_" + ksm.world.GetId().String() + ".db"
+	file := filepath.Join(extStorage, fmt.Sprintf("kusama_%s.db", ksm.world.GetId().String()))
 	ksm.bDB, err = bbolt.Open(file, 0666, nil)
 	if err != nil {
-		log.Error("Can not open bbolt storage file", file)
-		return false
+		return errors.WithMessage(err, "failed to open bbolt storage file")
 	}
 
 	ksm.blockBucket = []byte("Blocks")
 	ksm.RelayChainPos = cmath.Vec3{0, 0, 0}
-	_ = ksm.bDB.Update(
+	if err := ksm.bDB.Update(
 		func(tx *bbolt.Tx) error {
 			if _, err := tx.CreateBucketIfNotExists(ksm.blockBucket); err != nil {
-				return fmt.Errorf("create bucket: %s", err)
+				return errors.Errorf("failed to create bucket: %s", err)
 			}
 			return nil
 		},
-	)
+	); err != nil {
+		return errors.WithMessage(err, "failed to update bbolt")
+	}
 	ksm.blocks = make(map[TBlockID]KusamaBlock)
 	ksm.bestBlock = 0
 	ksm.finalizedBlock = 0
 	ksm.Initialized = true
 
-	return true
+	return nil
 }
 
-func (ksm *Kusama) StoreBlockInfo(id TBlockID, b *KusamaBlock) {
+func (ksm *Kusama) StoreBlockInfo(id TBlockID, b *KusamaBlock) error {
 	bid := make([]byte, 4)
 	binary.LittleEndian.PutUint32(bid, id)
-	_ = ksm.bDB.Update(
+	return ksm.bDB.Update(
 		func(tx *bbolt.Tx) error {
 			bb := tx.Bucket(ksm.blockBucket)
 			return bb.Put(bid, utils.BinId(b.id))
@@ -263,10 +269,10 @@ func (ksm *Kusama) StoreBlockInfo(id TBlockID, b *KusamaBlock) {
 	)
 }
 
-func (ksm *Kusama) DeleteBlockInfo(id TBlockID) {
+func (ksm *Kusama) DeleteBlockInfo(id TBlockID) error {
 	bid := make([]byte, 4)
 	binary.LittleEndian.PutUint32(bid, id)
-	_ = ksm.bDB.Update(
+	return ksm.bDB.Update(
 		func(tx *bbolt.Tx) error {
 			bb := tx.Bucket(ksm.blockBucket)
 			return bb.Delete(bid)
@@ -274,36 +280,43 @@ func (ksm *Kusama) DeleteBlockInfo(id TBlockID) {
 	)
 }
 
-func (ksm *Kusama) WriteBestBlock(id uint32) {
+func (ksm *Kusama) WriteBestBlock(id uint32) error {
 	if id > ksm.bestBlock {
 		ksm.bestBlock = id
-		_, _ = ksm.world.GetStorage().DB.Exec(
-			`insert into stats(worldId, name, columnId, value) values(?,'BEST BLOCK',1,?) on duplicate key update  columnId=1,value=?;`,
+		_, err := ksm.world.GetStorage().DB.Exec(writeBestBlockQuery,
 			utils.BinId(ksm.world.GetId()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
 		)
+		return err
 	}
+	return nil
 }
 
-func (ksm *Kusama) WriteFinalizedBlock(id uint32) {
+func (ksm *Kusama) WriteFinalizedBlock(id uint32) error {
 	if id > ksm.finalizedBlock {
 		ksm.finalizedBlock = id
-		_, _ = ksm.world.GetStorage().DB.Exec(
-			`insert into stats(worldId, name, columnId, value) values(?,'FINALIZED BLOCK',1,?) on duplicate key update  columnId=1,value=?;`,
+		_, err := ksm.world.GetStorage().DB.Exec(
+			writeFinalizedBlockQuery,
 			utils.BinId(ksm.world.GetId()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
 		)
+		return err
 	}
+	return nil
 }
 
-func (ksm *Kusama) LoadBlocks() {
+func (ksm *Kusama) LoadBlocks() error {
 	ksm.blockMutex.Lock()
 	defer ksm.blockMutex.Unlock()
-	_ = ksm.bDB.View(
+
+	return ksm.bDB.View(
 		func(tx *bbolt.Tx) error {
 			bb := tx.Bucket(ksm.blockBucket)
 			return bb.ForEach(
 				func(k, v []byte) error {
 					id := binary.LittleEndian.Uint32(k)
-					blockSpaceId, _ := uuid.FromBytes(v)
+					blockSpaceId, err := uuid.FromBytes(v)
+					if err != nil {
+						return errors.WithMessage(err, "failed to parse block space id")
+					}
 					block := KusamaBlock{id: blockSpaceId, name: "#:" + strconv.Itoa(int(id))}
 					log.Debug("block loaded:", id, block)
 					ksm.blocks[id] = block
@@ -314,51 +327,50 @@ func (ksm *Kusama) LoadBlocks() {
 	)
 }
 
-func (ksm *Kusama) GetValidatorSpaceIdByAddress(address string) (uuid.UUID, error) {
+func (ksm *Kusama) GetValidatorSpaceIDByAddress(address string) (uuid.UUID, error) {
 	rows, err := ksm.world.GetStorage().Query(
-		`select spaceId from space_attributes where attributeId=? and value =?;`,
+		getValidatorSpaceIDByAddressQuery,
 		utils.BinId(ksm.ValidatorAddressIdAttribute),
 		address,
 	)
 	if err != nil {
-		log.Warnf("check error: %+v", err)
-		return uuid.Nil, err
+		return uuid.Nil, errors.WithMessage(err, "failed to get from db")
 	}
 	defer rows.Close()
+
 	if rows.Next() {
 		bid := make([]byte, 16)
-		_ = rows.Scan(&bid)
+		if err := rows.Scan(&bid); err != nil {
+			return uuid.Nil, errors.WithMessage(err, "failed to scan rows")
+		}
 		id, err := uuid.FromBytes(bid)
 		if err != nil {
-			return uuid.Nil, err
+			return uuid.Nil, errors.WithMessage(err, "failed to parse id")
 		}
 		return id, nil
 
 	}
-	return uuid.Nil, err
+	return uuid.Nil, nil
 }
 
 func (ksm *Kusama) GetSpaceNameByID(id uuid.UUID) (string, error) {
-	rows, err := ksm.world.GetStorage().Query(
-		`select name from spaces where id=? ;`,
-		utils.BinId(id),
-	)
+	rows, err := ksm.world.GetStorage().Query(getSpaceNameByIDQuery, utils.BinId(id))
 	if err != nil {
-		return "", err
+		return "", errors.WithMessage(err, "failed to get from db")
 	}
 	defer rows.Close()
+
 	if rows.Next() {
 		var name string
 		if err := rows.Scan(&name); err != nil {
-			log.Error(err)
+			return "", errors.WithMessage(err, "failed to scan rows")
 		}
 		return name, nil
-
 	}
-	return "", err
+	return "", nil
 }
 
-func (ksm *Kusama) SpawnBlock(b *KusamaBlock) {
+func (ksm *Kusama) SpawnBlock(b *KusamaBlock) error {
 	log.Info("Spawn Block")
 	defArray := make([]message.ObjectDefinition, 1)
 	defArray[0] = message.ObjectDefinition{
@@ -378,31 +390,34 @@ func (ksm *Kusama) SpawnBlock(b *KusamaBlock) {
 	msg := posbus.NewTriggerTransitionalBridgingEffectsOnObjectMsg(1)
 	// FIXME: real validator nodes
 	// source := uuid.MustParse("593dfed9-7627-4ad7-bbf1-808585ab68e7")
-	StringAttributes := make(map[string]string)
-	StringAttributes["kusama_block_num_transactions"] = "TRANSACTIONS " + strconv.Itoa(b.numExtrinsics)
-
-	source, err := ksm.GetValidatorSpaceIdByAddress(b.author)
-	if err == nil {
-		if !ksm.world.GetSpacePresent(source) {
-			log.Errorf("space is missing: %s %s", source.String(), b.author)
-		}
-
-		msg.SetEffect(0, b.id, b.id, source, 10)
-		ksm.world.Broadcast(msg.WebsocketMessage())
-
-		validatorName, err1 := ksm.GetSpaceNameByID(source)
-		if err1 == nil {
-			StringAttributes["kusama_block_validator"] = validatorName
-		}
-
-	} else {
-		log.Error("had problem with block!", b)
+	StringAttributes := map[string]string{
+		"kusama_block_num_transactions": "TRANSACTIONS " + strconv.Itoa(b.numExtrinsics),
 	}
+
+	source, err := ksm.GetValidatorSpaceIDByAddress(b.author)
+	if err != nil {
+		return errors.WithMessage(err, "failed to get validator space id by address")
+	}
+
+	if !ksm.world.GetSpacePresent(source) {
+		log.Errorf("Kusama: SpawnBlock: space is missing: %s %s", source.String(), b.author)
+	}
+
+	msg.SetEffect(0, b.id, b.id, source, 10)
+	ksm.world.Broadcast(msg.WebsocketMessage())
+
+	var validatorName string
+	validatorName, err = ksm.GetSpaceNameByID(source)
+	if err == nil {
+		StringAttributes["kusama_block_validator"] = validatorName
+	}
+
 	ksm.world.Broadcast(ksm.world.GetBuilder().SetObjectStrings(b.id, StringAttributes))
 
+	return nil
 }
 
-func (ksm *Kusama) UnSpawnBlock(id uuid.UUID) {
+func (ksm *Kusama) UnSpawnBlock(id uuid.UUID) error {
 	log.Info("UnSpawn Block")
 	effectMsg := posbus.NewTriggerTransitionalEffectsOnObjectMsg(1)
 	effectMsg.SetEffect(0, id, id, 11)
@@ -411,18 +426,20 @@ func (ksm *Kusama) UnSpawnBlock(id uuid.UUID) {
 	msg := posbus.NewRemoveStaticObjectsMsg(1)
 	msg.SetObject(0, id)
 	ksm.world.Broadcast(msg.WebsocketMessage())
+	return nil
 }
 
-func (ksm *Kusama) BlockCreationCallback(client mqtt.Client, msg mqtt.Message) {
+func (ksm *Kusama) BlockCreationCallback(client mqtt.Client, msg mqtt.Message) error {
 	var blockEvent kusamaBlockCreatedEvent
-	err := json.Unmarshal(msg.Payload(), &blockEvent)
-	if err != nil {
-		log.Error("wrong block message")
-		return
+	if err := json.Unmarshal(msg.Payload(), &blockEvent); err != nil {
+		return errors.WithMessage(err, "failed to unmarshal kusama block created event")
 	}
+
 	id := blockEvent.Number
+
 	ksm.blockMutex.Lock()
 	defer ksm.blockMutex.Unlock()
+
 	NumTransactions := 0
 	if bl, ok := ksm.blocks[id]; ok {
 		// we have a block
@@ -433,15 +450,28 @@ func (ksm *Kusama) BlockCreationCallback(client mqtt.Client, msg mqtt.Message) {
 		}
 	} else {
 		// we don't have a block yet
-		block := KusamaBlock{id: uuid.New(), pos: ksm.RelayChainPos, name: "#" + strconv.Itoa(int(id)), numExtrinsics: blockEvent.ExtrinsicsCount, author: blockEvent.AuthorId}
+		block := KusamaBlock{
+			id:            uuid.New(),
+			pos:           ksm.RelayChainPos,
+			name:          "#" + strconv.Itoa(int(id)),
+			numExtrinsics: blockEvent.ExtrinsicsCount,
+			author:        blockEvent.AuthorId,
+		}
 
-		ksm.StoreBlockInfo(id, &block)
+		if err := ksm.StoreBlockInfo(id, &block); err != nil {
+			return errors.WithMessage(err, "failed to store block info")
+		}
 		ksm.blocks[id] = block
 		NumTransactions = block.numExtrinsics
 		// spawn the block here
-		ksm.WriteBestBlock(id)
-		ksm.SpawnBlock(&block)
+		if err := ksm.WriteBestBlock(id); err != nil {
+			return errors.WithMessage(err, "failed to write best block")
+		}
+		if err := ksm.SpawnBlock(&block); err != nil {
+			return errors.WithMessage(err, "failed to spawn block")
+		}
 	}
+
 	for i := 0; i < NumTransactions; i++ {
 		time.Sleep(time.Millisecond * 100)
 		effect := uint32(i%4 + 1)
@@ -449,48 +479,69 @@ func (ksm *Kusama) BlockCreationCallback(client mqtt.Client, msg mqtt.Message) {
 		m.SetEffect(0, ksm.TransactionCore, ksm.TransactionCore, ksm.blocks[id].id, effect)
 		ksm.world.Broadcast(m.WebsocketMessage())
 	}
+
+	return nil
 }
 
-func (ksm *Kusama) BlockFinalizationCallback(client mqtt.Client, message mqtt.Message) {
+func (ksm *Kusama) BlockFinalizationCallback(client mqtt.Client, message mqtt.Message) error {
 	var blockEvent kusamaBlockFinalizedEvent
-	err := json.Unmarshal(message.Payload(), &blockEvent)
-	if err != nil {
-		log.Errorf("wrong block message")
-		return
+	if err := json.Unmarshal(message.Payload(), &blockEvent); err != nil {
+		return errors.WithMessage(err, "failed to unmarshal kusama block finalized event")
 	}
+
 	id := blockEvent.Number
-	ksm.WriteFinalizedBlock(id)
+	if err := ksm.WriteFinalizedBlock(id); err != nil {
+		return errors.WithMessage(err, "failed to write finalized block")
+	}
+
 	ksm.blockMutex.Lock()
 	defer ksm.blockMutex.Unlock()
+
 	for blockID := range ksm.blocks {
-		if (blockID) <= id {
+		if blockID <= id {
 			bid := ksm.blocks[blockID].id
-			go ksm.UnSpawnBlock(bid)
+			go func() {
+				if err := ksm.UnSpawnBlock(bid); err != nil {
+					log.Error(errors.WithMessagef(err, "Kusama: BlockFinalizationCallback: failed to unspawn block: %s", bid))
+				}
+			}()
 			time.Sleep(time.Millisecond * 30)
 			delete(ksm.blocks, blockID)
-			ksm.DeleteBlockInfo(blockID)
+			if err := ksm.DeleteBlockInfo(blockID); err != nil {
+				return errors.WithMessage(err, "failed to delete block info")
+			}
 		}
 	}
+
+	return nil
 }
 
-func (ksm *Kusama) Run() {
+func (ksm *Kusama) Run() error {
 	if !ksm.Initialized {
-		return
+		return errors.New("not initialized")
 	}
-	ksm.LoadBlocks()
-	ksm.world.SafeSubscribe("harvester/kusama/block-creation-event", 2, ksm.BlockCreationCallback)
-	ksm.world.SafeSubscribe("harvester/kusama/block-finalized-event", 2, ksm.BlockFinalizationCallback)
-	ksm.world.SafeSubscribe("harvester/kusama/slash-event", 2, ksm.SlashCallback)
-	ksm.world.SafeSubscribe("harvester/kusama/reward-event", 2, ksm.RewardCallback)
-	ksm.world.SafeSubscribe("harvester/kusama/era", 2, ksm.EraCallback)
-	ksm.world.SafeSubscribe("harvester/kusama/session", 2, ksm.SessionCallback)
-	ksm.world.SafeSubscribe("updates/events/changed", 2, ksm.SpaceChangedCallback)
+
+	if err := ksm.LoadBlocks(); err != nil {
+		return errors.WithMessage(err, "failed to load blocks")
+	}
+
+	ksm.world.SafeSubscribe("harvester/kusama/block-creation-event", 2, safemqtt.LogMQTTMessageHandler("block creation", ksm.BlockCreationCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/block-finalized-event", 2, safemqtt.LogMQTTMessageHandler("block finalized", ksm.BlockFinalizationCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/slash-event", 2, safemqtt.LogMQTTMessageHandler("slash", ksm.SlashCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/reward-event", 2, safemqtt.LogMQTTMessageHandler("reward", ksm.RewardCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/era", 2, safemqtt.LogMQTTMessageHandler("era", ksm.EraCallback))
+	ksm.world.SafeSubscribe("harvester/kusama/session", 2, safemqtt.LogMQTTMessageHandler("session", ksm.SessionCallback))
+	ksm.world.SafeSubscribe("updates/events/changed", 2, safemqtt.LogMQTTMessageHandler("events changed", ksm.SpaceChangedCallback))
 
 	time.Sleep(time.Duration(1<<63 - 1))
 
 	// handle clock
-	ksm.EvClock()
+	if err := ksm.EvClock(); err != nil {
+		return errors.WithMessage(err, "failed to run ev clock")
+	}
 	go ksm.EraClockTimer()
+
+	return nil
 }
 
 func (ksm *Kusama) EraClockTimer() {
@@ -517,12 +568,10 @@ func (ksm *Kusama) SortSpaces(s []uuid.UUID, t uuid.UUID) {
 	// }
 }
 
-func (ksm *Kusama) RewardCallback(client mqtt.Client, msg mqtt.Message) {
+func (ksm *Kusama) RewardCallback(client mqtt.Client, msg mqtt.Message) error {
 	var r rewardEvent
-	err := json.Unmarshal(msg.Payload(), &r)
-	if err != nil {
-		log.Errorf("Wrong rewards message: %v", err)
-		return
+	if err := json.Unmarshal(msg.Payload(), &r); err != nil {
+		return errors.WithMessage(err, "failed to unmarshal reward event")
 	}
 
 	m := posbus.NewTriggerTransitionalEffectsOnObjectMsg(1)
@@ -531,8 +580,10 @@ func (ksm *Kusama) RewardCallback(client mqtt.Client, msg mqtt.Message) {
 
 	vl := make([]uuid.UUID, 0)
 	for s := range r.Rewards {
-		dest, err := ksm.GetValidatorSpaceIdByAddress(s)
-		if err == nil {
+		dest, err := ksm.GetValidatorSpaceIDByAddress(s)
+		if err != nil {
+			log.Warnf("Kusama: RewardCallback: failed to get validator space id by address: %s", s)
+		} else {
 			vl = append(vl, dest)
 		}
 	}
@@ -543,24 +594,24 @@ func (ksm *Kusama) RewardCallback(client mqtt.Client, msg mqtt.Message) {
 		m2.SetEffect(i, ksm.RewardsAccumulator, ksm.RewardsAccumulator, vl[i], 302)
 	}
 	ksm.world.Broadcast(m2.WebsocketMessage())
+
+	return nil
 }
 
-func (ksm *Kusama) EraCallback(client mqtt.Client, msg mqtt.Message) {
+func (ksm *Kusama) EraCallback(client mqtt.Client, msg mqtt.Message) error {
 	var r eraEvent
-	err := json.Unmarshal(msg.Payload(), &r)
-	if err != nil {
-		log.Errorf("Wrong era message: %v", err)
-		return
+	if err := json.Unmarshal(msg.Payload(), &r); err != nil {
+		return errors.WithMessage(err, "failed to parse era event")
 	}
+	return nil
 }
 
-func (ksm *Kusama) SessionCallback(client mqtt.Client, msg mqtt.Message) {
+func (ksm *Kusama) SessionCallback(client mqtt.Client, msg mqtt.Message) error {
 	var r sessionEvent
-	err := json.Unmarshal(msg.Payload(), &r)
-	if err != nil {
-		log.Errorf("Wrong session message: %v", err)
-		return
+	if err := json.Unmarshal(msg.Payload(), &r); err != nil {
+		return errors.WithMessage(err, "failed to unmarshal session event")
 	}
+
 	ksm.SetRewardsAccumulatorState(r.CurrentSlotInEra, r.SlotsPerEra)
 	ksm.EraDuration = time.Duration(r.SlotDuration*r.SlotsPerEra) * 1000000
 	newEraStart := time.UnixMilli(r.ActiveEraStart)
@@ -570,35 +621,33 @@ func (ksm *Kusama) SessionCallback(client mqtt.Client, msg mqtt.Message) {
 		ksm.BroadCastEraTimer()
 	}
 
+	return nil
 }
 func (ksm *Kusama) BroadCastEraTimer() {
-	StringAttributes := make(map[string]string)
-	StringAttributes["kusama_clock_era_time"] = strconv.FormatInt(int64(ksm.TimeLeftInEra().Milliseconds()), 10)
-	ksm.world.Broadcast(ksm.world.GetBuilder().SetObjectStrings(ksm.EraClock, StringAttributes))
+	stringAttributes := map[string]string{
+		"kusama_clock_era_time": strconv.FormatInt(int64(ksm.TimeLeftInEra().Milliseconds()), 10),
+	}
+
+	ksm.world.Broadcast(ksm.world.GetBuilder().SetObjectStrings(ksm.EraClock, stringAttributes))
 }
 
-func (ksm *Kusama) SpaceChangedCallback(client mqtt.Client, msg mqtt.Message) {
-	ksm.EvClock()
+func (ksm *Kusama) SpaceChangedCallback(client mqtt.Client, msg mqtt.Message) error {
+	return ksm.EvClock()
 }
 
-func (ksm *Kusama) EvClock() {
+func (ksm *Kusama) EvClock() error {
 	// TODO: to change query events only in the current world and to process only first row
-	q := `select sie.title, sie.start, sie.image_hash from space_integration_events sie
-				where sie.start >= NOW()
-				order by sie.start
-				limit ?` // TODO: remove limit
-	rows, err := ksm.world.GetStorage().Queryx(q, 3)
+	rows, err := ksm.world.GetStorage().Queryx(evClockQuery, 3)
 	if err != nil {
-		log.Error(1, "error getting space integration events: ", err)
-		return
+		return errors.WithMessage(err, "failed to get space integration events")
 	}
 	defer rows.Close()
+
 	var events []EventStruct
 	for rows.Next() {
 		event := EventStruct{}
-		err := rows.Scan(&event.title, &event.start, &event.image_hash)
-		if err != nil {
-			log.Error(1, "could not scan event: ", err)
+		if err := rows.Scan(&event.title, &event.start, &event.image_hash); err != nil {
+			log.Error(errors.WithMessage(err, "Kusama: EvClock: failed to scan event"))
 			continue
 		}
 		events = append(events, event)
@@ -606,18 +655,21 @@ func (ksm *Kusama) EvClock() {
 
 	if !reflect.DeepEqual(ksm.NextEvent, events[0]) {
 		ksm.NextEvent = events[0]
-		ff := strconv.FormatInt(int64(time.Until(ksm.NextEvent.start).Milliseconds()), 10)
+		ff := strconv.FormatInt(time.Until(ksm.NextEvent.start).Milliseconds(), 10)
 		log.Warnf(
-			"Updatimg timer state to %s (now %s) , diff: %s", ksm.NextEvent.start.String(), time.Now().String(), ff,
+			"EvClock: updatimg timer state to %s (now %s) , diff: %s", ksm.NextEvent.start.String(), time.Now().String(), ff,
 		)
 		log.Warnf(
-			"Updatimg timer state (UTC) to %s (now %s) , diff: %s", ksm.NextEvent.start.UTC().String(),
+			"EvClock: updatimg timer state (UTC) to %s (now %s) , diff: %s", ksm.NextEvent.start.UTC().String(),
 			time.Now().UTC().String(), ff,
 		)
-		ksm.world.SetSpaceTitle(ksm.EventsClock, ksm.NextEvent.title)
+		if err := ksm.world.SetSpaceTitle(ksm.EventsClock, ksm.NextEvent.title); err != nil {
+			log.Warn("Kusama: EvClock: failed to set space title")
+		}
 		ksm.SendEventClockUpdate()
-
 	}
+
+	return nil
 
 	// Change Event Clock name
 
@@ -628,19 +680,22 @@ func (ksm *Kusama) EvClock() {
 }
 
 func (ksm *Kusama) SendEventClockUpdate() {
-
-	textures := make(map[string]string)
 	imgHash := ksm.NextEvent.image_hash
-	log.Warnf("Clock Texture: %s", imgHash)
+	log.Warnf("Kusama: SendEventClockUpdate: clock texture: %s", imgHash)
 	if imgHash == "" {
 		imgHash = "some_default_value"
 	}
-	textures["clock_texture"] = imgHash
+
+	textures := map[string]string{
+		"clock_texture": imgHash,
+	}
 	// textures["name_hash"] = "fc28df0fd2627765ce5c171cfdd5561b"
 	ksm.world.Broadcast(ksm.world.GetBuilder().SetObjectTextures(ksm.EventsClock, textures))
 
-	stringAttributes := make(map[string]string)
-	stringAttributes["timer"] = strconv.FormatInt(int64(time.Until(ksm.NextEvent.start).Milliseconds()), 10)
+	stringAttributes := map[string]string{
+		"timer": strconv.FormatInt(int64(time.Until(ksm.NextEvent.start).Milliseconds()), 10),
+	}
+
 	ksm.world.Broadcast(ksm.world.GetBuilder().SetObjectStrings(ksm.EventsClock, stringAttributes))
 
 	log.Warnf("Sending timer state:%s", stringAttributes["timer"])
@@ -651,7 +706,7 @@ func (ksm *Kusama) TimeLeftInEra() time.Duration {
 		time.Sleep(time.Second)
 	}
 	log.Warnf(
-		"ERA : %v %v %v %v %v", ksm.EraStart.UTC(), ksm.EraStart.UTC(), time.Since(ksm.EraStart.UTC()).Minutes(),
+		"ERA: %v %v %v %v %v", ksm.EraStart.UTC(), ksm.EraStart.UTC(), time.Since(ksm.EraStart.UTC()).Minutes(),
 		time.Since(ksm.EraStart).Minutes(), ksm.EraDuration,
 	)
 	return ksm.EraDuration - time.Since(ksm.EraStart.UTC()) - 100*time.Second
@@ -665,19 +720,19 @@ func (ksm *Kusama) TimeLeftInEra() time.Duration {
 // }
 
 func (ksm *Kusama) SetRewardsAccumulatorState(i, n int) {
-	attr := make(map[string]int32)
-	attr["rewardsamount"] = int32(math.Round(float64(i) / float64(n) * 100.0))
+	attr := map[string]int32{
+		"rewardsamount": int32(math.Round(float64(i) / float64(n) * 100.0)),
+	}
+
 	ksm.world.Broadcast(ksm.world.GetBuilder().SetObjectAttributes(ksm.RewardsAccumulator, attr))
 }
 
-func (ksm *Kusama) SlashCallback(client mqtt.Client, msg mqtt.Message) {
+func (ksm *Kusama) SlashCallback(client mqtt.Client, msg mqtt.Message) error {
 	var r slashEvent
-	err := json.Unmarshal(msg.Payload(), &r)
-	if err != nil {
-		log.Errorf("Wrong Slash message: %v", err)
-		return
+	if err := json.Unmarshal(msg.Payload(), &r); err != nil {
+		return errors.WithMessage(err, "failed to unmarshal slash event")
 	}
-
+	return nil
 }
 func (ksm *Kusama) InitSpace(s extension.Space) {
 	// TODO implement me
@@ -692,14 +747,14 @@ func (ksm *Kusama) DeinitSpace(s extension.Space) {
 func (ksm *Kusama) InitUser(u extension.User) {
 	// TODO implement me
 	go func() {
-		StringAttributes := make(map[string]string)
-		StringAttributes["kusama_clock_era_time"] = strconv.FormatInt(int64(ksm.TimeLeftInEra().Milliseconds()), 10)
+		stringAttributes := map[string]string{
+			"kusama_clock_era_time": strconv.FormatInt(int64(ksm.TimeLeftInEra().Milliseconds()), 10),
+		}
 
-		u.Send(ksm.world.GetBuilder().SetObjectStrings(ksm.EraClock, StringAttributes))
+		u.Send(ksm.world.GetBuilder().SetObjectStrings(ksm.EraClock, stringAttributes))
 	}()
 
 	ksm.SendEventClockUpdate()
-
 }
 
 func (ksm *Kusama) DeinitUser(u extension.User) {

@@ -21,9 +21,9 @@ type sector struct {
 
 func NewSector(parameterMap map[string]interface{}) Algo {
 	return &sector{
-		Angle:  utils.F64FromMap(parameterMap, "angle", sectorAngleDefaultValue),
-		R:      utils.F64FromMap(parameterMap, "R", sectorRadiusDefaultValue),
-		VShift: utils.F64FromMap(parameterMap, "Vshift", sectorVShiftDefaultValue),
+		Angle:  utils.GetFromAnyMap(parameterMap, "angle", sectorAngleDefaultValue),
+		R:      utils.GetFromAnyMap(parameterMap, "R", sectorRadiusDefaultValue),
+		VShift: utils.GetFromAnyMap(parameterMap, "Vshift", sectorVShiftDefaultValue),
 	}
 }
 

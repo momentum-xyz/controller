@@ -2,14 +2,12 @@ package spacetype
 
 import (
 	"encoding/json"
-	"errors"
-
 	"github.com/momentum-xyz/controller/internal/position"
 	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/controller/utils"
 
 	"github.com/google/uuid"
-	"github.com/sasha-s/go-deadlock"
+	"github.com/pkg/errors"
 )
 
 type PositionalParameters struct {
@@ -47,40 +45,35 @@ type TSpaceType struct {
 }
 
 type TSpaceTypes struct {
-	spaceTypes   map[uuid.UUID]*TSpaceType
-	lock         deadlock.Mutex
+	spaceTypes   *utils.SyncMap[uuid.UUID, *TSpaceType]
 	spaceStorage space.Storage
 }
 
 func NewSpaceTypes(spaceStorage space.Storage) *TSpaceTypes {
 	obj := new(TSpaceTypes)
-	obj.spaceTypes = make(map[uuid.UUID]*TSpaceType)
+	obj.spaceTypes = utils.NewSyncMap[uuid.UUID, *TSpaceType]()
 	obj.spaceStorage = spaceStorage
 	return obj
 }
 
 func (t *TSpaceTypes) Set(id uuid.UUID, st *TSpaceType) {
-	t.lock.Lock()
-	t.spaceTypes[id] = st
-	t.lock.Unlock()
+	t.spaceTypes.Store(id, st)
 }
 
 func (t *TSpaceTypes) Get(id uuid.UUID) (*TSpaceType, error) {
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	if spaceType, ok := t.spaceTypes[id]; ok {
+	t.spaceTypes.Mu.Lock()
+	defer t.spaceTypes.Mu.Unlock()
+
+	if spaceType, ok := t.spaceTypes.Data[id]; ok {
 		return spaceType, nil
 	}
-	spaceType := &TSpaceType{
-		Id: id,
-	}
-	err := t.UpdateMetaSpaceType(spaceType)
 
-	if err != nil {
-		return nil, errors.New("DB missing spaceType: " + spaceType.Id.String())
+	spaceType := &TSpaceType{Id: id}
+	if err := t.UpdateMetaSpaceType(spaceType); err != nil {
+		return nil, errors.WithMessagef(err, "failed to update meta space type: %s", spaceType.Id)
 	}
 
-	t.spaceTypes[id] = spaceType
+	t.spaceTypes.Data[id] = spaceType
 	return spaceType, nil
 }
 
@@ -89,12 +82,13 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	log.Info("Getting SpaceType by Id: ", x.Id)
 	entry, err := t.spaceStorage.QuerySingleSpaceTypeByUUID(x.Id)
 	if err != nil {
-		log.Error(err)
-		return err
+		return errors.WithMessage(err, "failed to get entry")
 	}
 
 	if aux, ok := entry[AuxiliaryTables]; ok && aux != nil {
-		_ = json.Unmarshal([]byte(aux.(string)), &x.AuxTables)
+		if err := json.Unmarshal([]byte(utils.GetFromAny(aux, "")), &x.AuxTables); err != nil {
+			return errors.WithMessage(err, "failed to unmarshal aux tables")
+		}
 		log.Info(x.AuxTables)
 	}
 	delete(entry, AuxiliaryTables)
@@ -103,31 +97,44 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 
 	x.Minimap = 1
 	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
-		x.Minimap = uint8(minimapEntry.(int64))
+		x.Minimap = uint8(utils.GetFromAny[int64](minimapEntry, -1))
 	}
 	x.Visible = 1
 	if visibleEntry, ok := entry["visible"]; ok && visibleEntry != nil {
-		x.Visible = int8(visibleEntry.(int64))
+		x.Visible = int8(utils.GetFromAny[int64](visibleEntry, -1))
 	}
 
 	x.AssetId = uuid.Nil
-	if AssetId, ok := entry["asset"]; ok && AssetId != nil {
-		x.AssetId = utils.DbToUuid(AssetId)
+	if assetId, ok := entry["asset"]; ok && assetId != nil {
+		uid, err := utils.DbToUuid(assetId)
+		if err != nil {
+			return errors.WithMessage(err, "failed to parse asset id")
+		}
+		x.AssetId = uid
 	}
 
 	x.InfoUIId = uuid.Nil
-	if InfoUIId, ok := entry["infoui_id"]; ok && InfoUIId != nil {
-		x.InfoUIId = utils.DbToUuid(InfoUIId)
+	if infoUIId, ok := entry["infoui_id"]; ok && infoUIId != nil {
+		uid, err := utils.DbToUuid(infoUIId)
+		if err != nil {
+			return errors.WithMessage(err, "failed to parse info ui id")
+		}
+		x.InfoUIId = uid
 	}
 
 	if childPlace, ok := entry[ChildPlacement]; ok {
 		// log.Println("childPlace ", x.Id, ": ", childPlace)
 		var t3DPlacements T3DPlacements
-		jsonData := []byte(childPlace.(string))
-		_ = json.Unmarshal(jsonData, &t3DPlacements)
+		jsonData := []byte(utils.GetFromAny(childPlace, ""))
+		if err := json.Unmarshal(jsonData, &t3DPlacements); err != nil {
+			return errors.WithMessage(err, "failed to unmarshal 3d placements")
+		}
 		for _, placement := range t3DPlacements {
-			FillPlacement(placement.(map[string]interface{}), &x.Placements)
+			if err := FillPlacement(utils.GetFromAny(placement, map[string]interface{}{}), x.Placements); err != nil {
+				log.Warn(errors.WithMessage(err, "TSpaceTypes: UpdateMetaSpaceType: failed to fill placement"))
+			}
 		}
 	}
+
 	return nil
 }

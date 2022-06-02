@@ -19,23 +19,25 @@ type WorldController interface {
 	GetStorage() *storage.Database
 	GetId() uuid.UUID
 	GetExtensionStorage() string
-	GetSpacePosition(id uuid.UUID) cmath.Vec3
+	GetSpacePosition(id uuid.UUID) (cmath.Vec3, error)
 	GetSpacePresent(id uuid.UUID) bool
 	BroadcastObjects(array []message.ObjectDefinition)
 	Broadcast(websocketMessage *websocket.PreparedMessage)
-	SafeSubscribe(topic string, qos byte, callback func(client mqtt.Client, msg mqtt.Message))
-	SetSpaceTitle(clock uuid.UUID, title string)
+	SafeSubscribe(topic string, qos byte, callback mqtt.MessageHandler)
+	SetSpaceTitle(clock uuid.UUID, title string) error
 }
+
 type Space interface {
 	// TODO
 }
+
 type User interface {
 	// TODO
 	Send(m *websocket.PreparedMessage)
 }
 
 type Extension interface {
-	Init() bool
+	Init() error
 
 	InitSpace(s Space)
 	DeinitSpace(s Space)
@@ -45,7 +47,7 @@ type Extension interface {
 	RunUser(u User)
 
 	RunSpace(s Space)
-	Run()
+	Run() error
 
 	SortSpaces(s []uuid.UUID, t uuid.UUID)
 }
