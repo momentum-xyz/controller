@@ -25,11 +25,11 @@ type helix struct {
 
 func NewHelix(parameterMap map[string]interface{}) Algo {
 	return &helix{
-		Angle:       utils.FromAnyMap(parameterMap, "angle", helixAngleDefaultValue),
-		VShift:      utils.FromAnyMap(parameterMap, "Vshift", helixVShiftDefaultValue),
-		R:           utils.FromAnyMap(parameterMap, "R", helixRadiusDefaultValue),
-		SpiralScale: utils.FromAnyMap(parameterMap, "spiralScale", helixSpiralScaleDefaultValue),
-		HelixVShift: utils.FromAnyMap(parameterMap, "helixVshift", helixHelixVShiftDefaultValue),
+		Angle:       utils.GetFromAnyMap(parameterMap, "angle", helixAngleDefaultValue),
+		VShift:      utils.GetFromAnyMap(parameterMap, "Vshift", helixVShiftDefaultValue),
+		R:           utils.GetFromAnyMap(parameterMap, "R", helixRadiusDefaultValue),
+		SpiralScale: utils.GetFromAnyMap(parameterMap, "spiralScale", helixSpiralScaleDefaultValue),
+		HelixVShift: utils.GetFromAnyMap(parameterMap, "helixVshift", helixHelixVShiftDefaultValue),
 	}
 }
 

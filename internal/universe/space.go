@@ -118,7 +118,7 @@ func (s *Space) handleStageMsg(msg []byte) error {
 	if val, ok := data["action"]; !ok || val != "state" {
 		return nil
 	}
-	val, err := strconv.ParseInt(utils.FromAny(data["value"], ""), 10, 32)
+	val, err := strconv.ParseInt(utils.GetFromAny(data["value"], ""), 10, 32)
 	if err != nil {
 		return errors.WithMessage(err, "invalid value")
 	}
@@ -198,10 +198,10 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 
 	s.pls = s.stype.Placements
 	isdefchanged := false
-	name := utils.FromAnyMap(entry, "name", "")
+	name := utils.GetFromAnyMap(entry, "name", "")
 	checkForChange(&name, &s.Name, &isdefchanged)
 	// fmt.Println("PR:", entry["parentId"])
-	parentID, err := uuid.FromBytes([]byte(utils.FromAnyMap(entry, "parentId", "")))
+	parentID, err := uuid.FromBytes([]byte(utils.GetFromAnyMap(entry, "parentId", "")))
 	if err != nil {
 		log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to parse parent id"))
 	}
@@ -214,7 +214,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	}
 
 	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
-		minimap := uint8(utils.FromAny[int64](minimapEntry, 0))
+		minimap := uint8(utils.GetFromAny[int64](minimapEntry, 0))
 		checkForChange(&minimap, &s.minimap, &isdefchanged)
 	} else {
 		checkForChange(&s.stype.Minimap, &s.minimap, &isdefchanged)
@@ -222,7 +222,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 
 	assetID := uuid.Nil
 	if easset, ok := entry["asset"]; ok && easset != nil {
-		assetID, err = uuid.FromBytes([]byte(utils.FromAny(easset, "")))
+		assetID, err = uuid.FromBytes([]byte(utils.GetFromAny(easset, "")))
 		if err != nil {
 			log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to parse asset id"))
 		}
@@ -242,7 +242,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	}
 
 	if namehash, ok := entry["name_hash"]; ok && namehash != nil {
-		textures["name"] = utils.FromAny(namehash, "")
+		textures["name"] = utils.GetFromAny(namehash, "")
 	}
 
 	updatedTextures := make(map[string]string)
@@ -255,7 +255,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	}
 
 	if evisible, ok := entry["visible"]; ok && evisible != nil {
-		s.visible = int8(utils.FromAny[int64](evisible, 0))
+		s.visible = int8(utils.GetFromAny[int64](evisible, 0))
 	} else {
 		s.visible = s.stype.Visible
 	}
@@ -267,7 +267,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	}
 
 	intAttributes := map[string]int32{
-		"private":   int32(utils.FromAnyMap[string, int64](entry, "secret", 0)),
+		"private":   int32(utils.GetFromAnyMap[string, int64](entry, "secret", 0)),
 		"stagemode": s.isStageMode,
 	}
 
@@ -317,7 +317,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	if childPlace, ok := entry[spacetype.ChildPlacement]; ok && childPlace != nil {
 		// log.Println("childPlace ", s.id, ": ", childPlace)
 		var t3DPlacements spacetype.T3DPlacements
-		jsonData := []byte(utils.FromAny(childPlace, ""))
+		jsonData := []byte(utils.GetFromAny(childPlace, ""))
 		if err := json.Unmarshal(jsonData, &t3DPlacements); err != nil {
 			log.Error(errors.WithMessage(err, "Space: UpdateMetaFromMap: failed to unmarshal child place"))
 		}
@@ -485,7 +485,7 @@ func (s *Space) UpdateChildren() error {
 		spaceVisible := m["visible"]
 		stVisible := m["st_visible"]
 		spacePosition := m["position"]
-		if (utils.FromAny[int64](spaceVisible, 0) != 0) || (spaceVisible == nil && utils.FromAny[int64](stVisible, 0) != 0) {
+		if (utils.GetFromAny[int64](spaceVisible, 0) != 0) || (spaceVisible == nil && utils.GetFromAny[int64](stVisible, 0) != 0) {
 			if spacePosition == nil {
 				// logger.Logln(1, cid)
 				cids[cid] = true
@@ -493,7 +493,7 @@ func (s *Space) UpdateChildren() error {
 				fixedChildren[cid] = true
 				if !s.children[cid] {
 					var vpos cmath.Vec3
-					if err := json.Unmarshal([]byte(utils.FromAny(spacePosition, "")), &vpos); err != nil {
+					if err := json.Unmarshal([]byte(utils.GetFromAny(spacePosition, "")), &vpos); err != nil {
 						log.Error(errors.WithMessage(err, "Space: UpdateChildren: failed to unmarshal vpos"))
 					}
 					fixedChildrenPos[cid] = vpos

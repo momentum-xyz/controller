@@ -86,7 +86,7 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	}
 
 	if aux, ok := entry[AuxiliaryTables]; ok && aux != nil {
-		if err := json.Unmarshal([]byte(utils.FromAny(aux, "")), &x.AuxTables); err != nil {
+		if err := json.Unmarshal([]byte(utils.GetFromAny(aux, "")), &x.AuxTables); err != nil {
 			return errors.WithMessage(err, "failed to unmarshal aux tables")
 		}
 		log.Info(x.AuxTables)
@@ -97,11 +97,11 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 
 	x.Minimap = 1
 	if minimapEntry, ok := entry["minimap"]; ok && minimapEntry != nil {
-		x.Minimap = uint8(utils.FromAny[int64](minimapEntry, -1))
+		x.Minimap = uint8(utils.GetFromAny[int64](minimapEntry, -1))
 	}
 	x.Visible = 1
 	if visibleEntry, ok := entry["visible"]; ok && visibleEntry != nil {
-		x.Visible = int8(utils.FromAny[int64](visibleEntry, -1))
+		x.Visible = int8(utils.GetFromAny[int64](visibleEntry, -1))
 	}
 
 	x.AssetId = uuid.Nil
@@ -125,12 +125,12 @@ func (t *TSpaceTypes) UpdateMetaSpaceType(x *TSpaceType) error {
 	if childPlace, ok := entry[ChildPlacement]; ok {
 		// log.Println("childPlace ", x.Id, ": ", childPlace)
 		var t3DPlacements T3DPlacements
-		jsonData := []byte(utils.FromAny(childPlace, ""))
+		jsonData := []byte(utils.GetFromAny(childPlace, ""))
 		if err := json.Unmarshal(jsonData, &t3DPlacements); err != nil {
 			return errors.WithMessage(err, "failed to unmarshal 3d placements")
 		}
 		for _, placement := range t3DPlacements {
-			if err := FillPlacement(utils.FromAny(placement, map[string]interface{}{}), x.Placements); err != nil {
+			if err := FillPlacement(utils.GetFromAny(placement, map[string]interface{}{}), x.Placements); err != nil {
 				log.Warn(errors.WithMessage(err, "TSpaceTypes: UpdateMetaSpaceType: failed to fill placement"))
 			}
 		}

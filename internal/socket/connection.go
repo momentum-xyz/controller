@@ -152,7 +152,7 @@ func (c *Connection) StartWritePump() {
 			}
 			if c.canWrite.Get() {
 				for c.buffer.Length() > 0 {
-					if err := c.SendDirectly(utils.FromAny[*websocket.PreparedMessage](c.buffer.Remove(), nil)); err != nil {
+					if err := c.SendDirectly(utils.GetFromAny[*websocket.PreparedMessage](c.buffer.Remove(), nil)); err != nil {
 						return
 					}
 				}

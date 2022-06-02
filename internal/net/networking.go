@@ -120,7 +120,7 @@ func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
 	URL, _ := url.Parse(string(handshakeObj.Url()))
 	log.Info("URL to use:", URL)
 
-	userIDclaim, _ := uuid.Parse(utils.FromAnyMap(*claims, "sub", ""))
+	userIDclaim, _ := uuid.Parse(utils.GetFromAnyMap(*claims, "sub", ""))
 
 	if (userID == userIDclaim) || (userIDclaim.String() == "69e1d7f6-3130-4005-9969-31edf9af9445") || (userIDclaim.String() == "eb50bbc8-ba4e-46a3-a480-a9b30141ce91") {
 		connection := socket.NewConnection(conn)

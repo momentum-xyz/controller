@@ -34,7 +34,7 @@ func TestF64FromMap(t *testing.T) {
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			actual := FromAnyMap(test.input, test.key, def)
+			actual := GetFromAnyMap(test.input, test.key, def)
 			if actual != test.expected {
 				t.Errorf("expected %v, got %v", test.expected, actual)
 			}

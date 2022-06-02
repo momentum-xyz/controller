@@ -171,7 +171,7 @@ func (u *User) UserOfflineAction() error {
 	if err := u.world.hub.DB.RemoveOnline(u.ID, u.world.ID); err != nil {
 		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by world id"))
 	}
-	cspace := utils.FromAny(u.currentSpace.Load(), uuid.Nil)
+	cspace := utils.GetFromAny(u.currentSpace.Load(), uuid.Nil)
 	if cspace != uuid.Nil {
 		if err := u.world.hub.DB.RemoveOnline(u.ID, cspace); err != nil {
 			log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by space"))

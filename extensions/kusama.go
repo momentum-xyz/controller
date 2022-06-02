@@ -206,7 +206,7 @@ func (ksm *Kusama) Init() error {
 	if s, ok = r["asset"]; !ok {
 		return errors.New("failed to get asset")
 	}
-	ksm.TransactionBlockAsset, err = uuid.FromBytes([]byte(utils.FromAny(s, "")))
+	ksm.TransactionBlockAsset, err = uuid.FromBytes([]byte(utils.GetFromAny(s, "")))
 	if err != nil {
 		return errors.WithMessage(err, "failed to get transaction block asset")
 	}
@@ -214,7 +214,7 @@ func (ksm *Kusama) Init() error {
 	if s, ok = r["infoui_id"]; !ok {
 		return errors.New("failed to get info ui id")
 	}
-	ksm.BlockInfoUI, err = uuid.FromBytes([]byte(utils.FromAny(s, "")))
+	ksm.BlockInfoUI, err = uuid.FromBytes([]byte(utils.GetFromAny(s, "")))
 	if err != nil {
 		return errors.WithMessage(err, "failed to get block info ui")
 	}
@@ -226,7 +226,7 @@ func (ksm *Kusama) Init() error {
 	if s, ok = r["id"]; !ok {
 		return errors.New("failed to get kusama validator id attribute")
 	}
-	ksm.ValidatorAddressIdAttribute, err = uuid.FromBytes([]byte(utils.FromAny(s, "")))
+	ksm.ValidatorAddressIdAttribute, err = uuid.FromBytes([]byte(utils.GetFromAny(s, "")))
 	if err != nil {
 		return errors.WithMessage(err, "failed to get validator address id attribute")
 	}

@@ -30,12 +30,12 @@ type hexaSpiral struct {
 
 func NewHexaSpiral(parameterMap map[string]interface{}) Algo {
 	return &hexaSpiral{
-		Angle:            utils.FromAnyMap(parameterMap, "angle", hexaSpiralAngleDefaultValue),
-		Vshift:           utils.FromAnyMap(parameterMap, "Vshift", hexaSpiralVShiftDefaultValue),
-		Rspace:           utils.FromAnyMap(parameterMap, "Rspace", hexaSpiralRSpaceDefaultValue),
-		RandDisplacement: utils.FromAnyMap(parameterMap, "RandDisplacement", hexaSpiralRandDisplacementDefaultValue),
-		DrawCenter:       utils.FromAnyMap(parameterMap, "DrawCenter", hexaSpiralDrawCenterDefaultValue),
-		Scatter:          utils.FromAnyMap(parameterMap, "Scatter", hexaSpiralDrawCenterDefaultValue),
+		Angle:            utils.GetFromAnyMap(parameterMap, "angle", hexaSpiralAngleDefaultValue),
+		Vshift:           utils.GetFromAnyMap(parameterMap, "Vshift", hexaSpiralVShiftDefaultValue),
+		Rspace:           utils.GetFromAnyMap(parameterMap, "Rspace", hexaSpiralRSpaceDefaultValue),
+		RandDisplacement: utils.GetFromAnyMap(parameterMap, "RandDisplacement", hexaSpiralRandDisplacementDefaultValue),
+		DrawCenter:       utils.GetFromAnyMap(parameterMap, "DrawCenter", hexaSpiralDrawCenterDefaultValue),
+		Scatter:          utils.GetFromAnyMap(parameterMap, "Scatter", hexaSpiralDrawCenterDefaultValue),
 	}
 }
 
