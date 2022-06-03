@@ -143,13 +143,13 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 ) {
 	socketConnection, err := upgrader.Upgrade(response, request, nil)
 	if err != nil {
-		log.Error("error: socket upgrade error, aborting connection:", err)
+		log.Error(errors.WithMessage(err, "error: socket upgrade error, aborting connection")
 		return nil, nil, false, nil
 	}
 
 	mt, incomingMessage, err := socketConnection.ReadMessage()
 	if err != nil || mt != websocket.BinaryMessage {
-		log.Error("error: wrong PreHandShake (1), aborting connection")
+		log.Error(errors.WithMessagef(err, "error: wrong PreHandShake (1), aborting connection"))
 		return nil, nil, false, nil
 	}
 
