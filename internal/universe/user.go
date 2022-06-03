@@ -1,15 +1,15 @@
 package universe
 
 import (
-	"github.com/momentum-xyz/controller/utils"
 	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/socket"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
+	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 
@@ -141,7 +141,7 @@ func (u *User) Unregister(h *WorldController) error {
 
 func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 	// client.IsConnected()
-	const topicOffset = 87
+	const topicOffset = 87 // nice
 	log.Debug("user mqtt topic:", msg.Topic())
 	log.Debug("user mqtt offset topic:", msg.Topic()[topicOffset:])
 	subtopics := strings.Split(msg.Topic()[topicOffset:], "/")

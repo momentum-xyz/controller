@@ -1,9 +1,9 @@
 package net
 
 import (
+	// Std
 	"encoding/json"
 	"fmt"
-	// Std
 	"net/http"
 	"net/url"
 	"time"
@@ -111,7 +111,7 @@ func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
 
 	conn, claims, ok, handshakeObj := n.PreHandShake(w, r)
 	if !ok {
-		//log.Error("error: wrong PreHandShake, aborting connection")
+		// log.Error("error: wrong PreHandShake, aborting connection")
 		return
 	}
 
@@ -143,7 +143,7 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 ) {
 	socketConnection, err := upgrader.Upgrade(response, request, nil)
 	if err != nil {
-		log.Error(errors.WithMessage(err, "error: socket upgrade error, aborting connection")
+		log.Error(errors.WithMessage(err, "error: socket upgrade error, aborting connection"))
 		return nil, nil, false, nil
 	}
 
