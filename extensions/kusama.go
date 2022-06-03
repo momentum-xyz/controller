@@ -9,7 +9,6 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -24,6 +23,7 @@ import (
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
+	"github.com/sasha-s/go-deadlock"
 	// Third-Party
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
@@ -69,7 +69,7 @@ func NewKusama(controller extension.WorldController) extension.Extension {
 		TransactionBlockSpaceType: uuid.UUID{},
 		TransactionBlockAsset:     uuid.UUID{},
 		Initialized:               false,
-		blockMutex:                sync.Mutex{},
+		blockMutex:                deadlock.Mutex{},
 		bDB:                       nil,
 		blockBucket:               nil,
 		RelayChainPos:             cmath.Vec3{},
@@ -89,7 +89,7 @@ type Kusama struct {
 	TransactionBlockSpaceType   uuid.UUID
 	TransactionBlockAsset       uuid.UUID
 	Initialized                 bool
-	blockMutex                  sync.Mutex
+	blockMutex                  deadlock.Mutex
 	bDB                         *bbolt.DB
 	blockBucket                 []byte
 	RelayChainPos               cmath.Vec3
