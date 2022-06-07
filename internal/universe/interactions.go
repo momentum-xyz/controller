@@ -28,6 +28,11 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger entered space: failed to update online by space id"))
 		}
+		go func() {
+			if err := u.UpdateUsersOnSpace(targetUUID); err != nil {
+				log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger entered space: failed to update users on space: %s", targetUUID))
+			}
+		}()
 	case posbus.TriggerLeftSpace:
 		targetUUID := m.Target()
 		u.currentSpace.Store(uuid.Nil)
@@ -37,6 +42,11 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
 			log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to update online by space id"))
 		}
+		go func() {
+			if err := u.UpdateUsersOnSpace(targetUUID); err != nil {
+				log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to update users on space: %s", targetUUID))
+			}
+		}()
 	case posbus.TriggerHighFive:
 		if err := u.HandleHighFive(m); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger high fives: failed to handle high five"))

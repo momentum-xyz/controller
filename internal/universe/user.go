@@ -16,6 +16,7 @@ import (
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/pkg/errors"
 )
 
@@ -269,4 +270,15 @@ func (u *User) UpdatePosition(data []byte) {
 
 func (u *User) Send(m *websocket.PreparedMessage) {
 	u.connection.Send(m)
+}
+
+func (u *User) UpdateUsersOnSpace(spaceID uuid.UUID) error {
+	space, _ := u.world.spaces.Get(spaceID)
+	p := influxdb2.NewPoint(
+		"space_users",
+		map[string]string{"world": u.world.influxtag, "space": space.Name},
+		map[string]interface{}{"count": len(u.world.users.GetOnSpace(spaceID))},
+		time.Now(),
+	)
+	return u.world.hub.WriteInfluxPoint(p)
 }
