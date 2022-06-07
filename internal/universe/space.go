@@ -9,11 +9,11 @@ import (
 	"time"
 
 	// Momentum
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/position"
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/controller/internal/spacetype"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"

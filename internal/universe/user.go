@@ -1,22 +1,22 @@
 package universe
 
 import (
-	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
-	"github.com/momentum-xyz/controller/utils"
 	"strings"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/socket"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
+	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	"github.com/pkg/errors"
 )
 
@@ -142,7 +142,7 @@ func (u *User) Unregister(h *WorldController) error {
 
 func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 	// client.IsConnected()
-	const topicOffset = 87
+	const topicOffset = 87 // nice
 	log.Debug("user mqtt topic:", msg.Topic())
 	log.Debug("user mqtt offset topic:", msg.Topic()[topicOffset:])
 	subtopics := strings.Split(msg.Topic()[topicOffset:], "/")

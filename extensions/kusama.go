@@ -9,21 +9,21 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	// Momentum
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/mqtt"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
+	"github.com/sasha-s/go-deadlock"
 	// Third-Party
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
@@ -69,7 +69,7 @@ func NewKusama(controller extension.WorldController) extension.Extension {
 		TransactionBlockSpaceType: uuid.UUID{},
 		TransactionBlockAsset:     uuid.UUID{},
 		Initialized:               false,
-		blockMutex:                sync.Mutex{},
+		blockMutex:                deadlock.Mutex{},
 		bDB:                       nil,
 		blockBucket:               nil,
 		RelayChainPos:             cmath.Vec3{},
@@ -89,7 +89,7 @@ type Kusama struct {
 	TransactionBlockSpaceType   uuid.UUID
 	TransactionBlockAsset       uuid.UUID
 	Initialized                 bool
-	blockMutex                  sync.Mutex
+	blockMutex                  deadlock.Mutex
 	bDB                         *bbolt.DB
 	blockBucket                 []byte
 	RelayChainPos               cmath.Vec3

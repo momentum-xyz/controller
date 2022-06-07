@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/logger"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/utils"
 
 	"github.com/google/uuid"

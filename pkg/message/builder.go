@@ -6,8 +6,8 @@ import (
 	"time"
 
 	// Momentum
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/logger"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/flatbuff/go/api"
 	"github.com/momentum-xyz/posbus-protocol/posbus"

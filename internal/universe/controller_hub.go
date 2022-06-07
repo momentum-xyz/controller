@@ -6,7 +6,6 @@ import (
 	"time"
 
 	// Momentum
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/mqtt"
@@ -16,6 +15,7 @@ import (
 	"github.com/momentum-xyz/controller/internal/storage"
 	"github.com/momentum-xyz/controller/internal/user"
 	"github.com/momentum-xyz/controller/internal/world"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 
