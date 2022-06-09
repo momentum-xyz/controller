@@ -32,7 +32,6 @@ type Connection struct {
 	buffer    *queue.Queue
 	OnReceive func(m *posbus.Message)
 	OnPumpEnd func()
-	stopChan  chan bool
 	canWrite  utils.TAtomBool
 	mu        *deadlock.RWMutex
 	conn      *websocket.Conn
@@ -54,15 +53,17 @@ func OnPumpEndStub() {
 
 func (c *Connection) Close() {
 	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	if c.closed {
+		c.mu.Unlock()
 		return
 	}
 	c.closed = true
+	c.mu.Unlock()
 
-	log.Info("Closing connection and chan")
+	log.Info("Connection: closing connection and chan")
 	close(c.send)
+	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
+	c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 	c.conn.Close()
 }
 
@@ -77,7 +78,6 @@ func (c *Connection) SetPumpEndCallback(f func()) {
 func NewConnection(conn *websocket.Conn) *Connection {
 	c := &Connection{
 		send:      make(chan *websocket.PreparedMessage, 10),
-		stopChan:  make(chan bool),
 		buffer:    queue.New(),
 		OnReceive: OnReceiveStub,
 		OnPumpEnd: OnPumpEndStub,
@@ -89,6 +89,11 @@ func NewConnection(conn *websocket.Conn) *Connection {
 }
 
 func (c *Connection) StartReadPump() {
+	defer func() {
+		c.Close()
+		log.Info("Connection: end of read pump")
+	}()
+
 	c.conn.SetReadLimit(inMessageSizeLimit)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(
@@ -96,7 +101,8 @@ func (c *Connection) StartReadPump() {
 			return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 		},
 	)
-	log.Debug("Starting read pump")
+
+	log.Info("Connection: starting read pump")
 	for {
 		messageType, message, err := c.conn.ReadMessage()
 		if err != nil {
@@ -105,23 +111,19 @@ func (c *Connection) StartReadPump() {
 				case websocket.CloseNormalClosure,
 					websocket.CloseGoingAway,
 					websocket.CloseNoStatusReceived:
-					log.Infof("websocket closed by client: %s", err)
+					log.Info(errors.WithMessagef(err, "Connection: read pump: websocket closed by client"))
 					return
 				}
 			}
-			log.Error(errors.WithMessage(err, "Connection: StartReadPump: failed to read message fron connection"))
-			break
+			log.Debug(errors.WithMessage(err, "Connection: read pump: failed to read message from connection"))
+			return
 		}
 		if messageType != websocket.BinaryMessage {
-			log.Errorf("Connection: StartReadPump: wrong incoming message type: %d", messageType)
+			log.Errorf("Connection: read pump: wrong incoming message type: %d", messageType)
 		} else {
 			c.OnReceive(posbus.MsgFromBytes(message))
 		}
 	}
-	c.stopChan <- true
-	c.conn.Close()
-	log.Debug("End of read")
-
 }
 
 func (c *Connection) EnableWriting() {
@@ -131,23 +133,18 @@ func (c *Connection) EnableWriting() {
 func (c *Connection) StartWritePump() {
 	pingTicker := time.NewTicker(pingPeriod)
 	defer func() {
-		c.OnPumpEnd()
 		pingTicker.Stop()
-		// c.conn.Close()
-		log.Info("End of IO pump")
+		c.Close()
+		c.OnPumpEnd()
+		log.Info("Connection: end of write pump")
 	}()
 
-	log.Info("Starting WritePump")
-
-	// send goroutine
+	log.Info("Connection: starting write pump")
 	for {
 		select {
 		case message, ok := <-c.send:
 			if !ok {
-				c.conn.SetWriteDeadline(time.Now().Add(writeWait))
-				if err := c.conn.WriteMessage(websocket.CloseMessage, []byte{}); err != nil {
-					log.Warn(errors.WithMessagef(err, "Connection: StartWritePump: failed to write close message"))
-				}
+				log.Debug("Connection: write pump: chan closed")
 				return
 			}
 			if c.canWrite.Get() {
@@ -163,7 +160,7 @@ func (c *Connection) StartWritePump() {
 				if c.buffer.Length() < maxBufferSize {
 					c.buffer.Add(message)
 				} else {
-					log.Error(errors.New("Connection: StartWritePump:: buffer full, dropping connection!"))
+					log.Error(errors.New("Connection: write pump:: buffer full, dropping connection!"))
 					return
 				}
 			}
@@ -179,8 +176,6 @@ func (c *Connection) StartWritePump() {
 					}
 				}
 			}
-		case <-c.stopChan:
-			return
 		}
 	}
 }

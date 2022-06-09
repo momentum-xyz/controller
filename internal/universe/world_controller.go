@@ -450,15 +450,19 @@ func (wc *WorldController) run() error {
 			}
 			log.Info("Reg UserDone")
 		case client := <-wc.unregisterUser:
-			if err := client.Unregister(wc); err != nil {
-				log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
-			}
-			n := len(wc.unregisterUser)
-			for i := 0; i < n; i++ {
-				client := <-wc.unregisterUser
+			go func() {
 				if err := client.Unregister(wc); err != nil {
 					log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
 				}
+			}()
+			n := len(wc.unregisterUser)
+			for i := 0; i < n; i++ {
+				client := <-wc.unregisterUser
+				go func() {
+					if err := client.Unregister(wc); err != nil {
+						log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
+					}
+				}()
 			}
 		}
 		// logger.Logln(4, "Pass loop")

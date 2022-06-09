@@ -57,8 +57,8 @@ github.com/mattn/go-isatty v0.0.9/go.mod h1:YNRxwqDuOph6SZLI9vUUz6OYw3QyUt7WiY2y
 github.com/mattn/go-isatty v0.0.12/go.mod h1:cbi8OIDigv2wuxKPP5vlRcQ1OAZbq2CE4Kysco4FUpU=
 github.com/mattn/go-sqlite3 v1.14.6 h1:dNPt6NO46WmLVt2DLNpwczCmdV5boIZ6g/tlDrlRUbg=
 github.com/mattn/go-sqlite3 v1.14.6/go.mod h1:NyWgC/yNuGj7Q9rpYnZvas74GogHl5/Z4A/KQRfk6bU=
-github.com/momentum-xyz/posbus-protocol v0.0.0-20220519113200-0b5d1a43e4c7 h1:jE/BzfvalSSip6x0H8/z58sYzcyx/j38ViSgqwTevSw=
-github.com/momentum-xyz/posbus-protocol v0.0.0-20220519113200-0b5d1a43e4c7/go.mod h1:iiffTr8mJE1ffq+Tx1jqpaNPOssTnjOMu/42s0wAdPo=
+github.com/momentum-xyz/posbus-protocol v0.1.1 h1:ORLhdsMJhSP8T4iNOcR2KnfZu1+C4MoTuN3qhfURnWU=
+github.com/momentum-xyz/posbus-protocol v0.1.1/go.mod h1:jEDhJo9Zsk0hHbpWLp33O4kvnPctL7BXBvIq2WE2Hyc=
 github.com/pborman/getopt/v2 v2.1.0 h1:eNfR+r+dWLdWmV8g5OlpyrTYHkhVNxHBdN2cCrJmOEA=
 github.com/pborman/getopt/v2 v2.1.0/go.mod h1:4NtW75ny4eBw9fO1bhtNdYTlZKYX5/tBLtsOpwKIKd0=
 github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 h1:q2e307iGHPdTGp0hoxKjt1H5pDo6utceo3dQVK3I5XQ=

@@ -13,7 +13,7 @@ require (
 	github.com/influxdata/influxdb-client-go/v2 v2.8.2
 	github.com/jmoiron/sqlx v1.3.5
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/momentum-xyz/posbus-protocol v0.0.0-20220519113200-0b5d1a43e4c7
+	github.com/momentum-xyz/posbus-protocol v0.1.1
 	github.com/pborman/getopt/v2 v2.1.0
 	github.com/pkg/errors v0.9.1
 	github.com/sasha-s/go-deadlock v0.3.1
