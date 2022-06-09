@@ -200,11 +200,11 @@ func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
 	}
 
 	c.mu.RLock()
-	defer c.mu.RUnlock()
-
 	if c.closed {
+		c.mu.RUnlock()
 		return nil
 	}
+	c.mu.RUnlock()
 
 	if err := c.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 		return errors.WithMessage(err, "failed to set write deadline")
