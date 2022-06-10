@@ -7,6 +7,7 @@ package universe
 import (
 	// STD
 	"encoding/json"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
 	"github.com/pkg/errors"
 	_ "net/http/pprof"
 	"strconv"
@@ -376,6 +377,15 @@ func (wc *WorldController) AddUserToWorld(u *User) error {
 	if err := u.connection.SendDirectly(wc.spawnMsg.Load().(*websocket.PreparedMessage)); err != nil {
 		return errors.WithMessage(err, "failed to send spawn msg")
 	}
+	if err := u.connection.SendDirectly(
+		posbus.NewRelayToReactMsg(
+			"posbus", []byte("connected"),
+		).WebsocketMessage(),
+	); err != nil {
+		return errors.WithMessage(err, "failed to send connection notification message")
+
+	}
+
 	// fmt.Println(len(wc.spaces))
 	space.RecursiveSendAllAttributes(u.connection)
 	space.RecursiveSendAllStrings(u.connection)
@@ -444,7 +454,11 @@ func (wc *WorldController) run() error {
 				client := <-wc.registerUser
 				go func() {
 					if err := client.Register(wc); err != nil {
-						log.Warn(errors.WithMessagef(err, "WorldController: run: failed to register client: %s", client.ID))
+						log.Warn(
+							errors.WithMessagef(
+								err, "WorldController: run: failed to register client: %s", client.ID,
+							),
+						)
 					}
 				}()
 			}
@@ -452,7 +466,11 @@ func (wc *WorldController) run() error {
 		case client := <-wc.unregisterUser:
 			go func() {
 				if err := client.Unregister(wc); err != nil {
-					log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
+					log.Warn(
+						errors.WithMessagef(
+							err, "WorldController: run: failed to unregister client: %s", client.ID,
+						),
+					)
 				}
 			}()
 			n := len(wc.unregisterUser)
@@ -460,7 +478,11 @@ func (wc *WorldController) run() error {
 				client := <-wc.unregisterUser
 				go func() {
 					if err := client.Unregister(wc); err != nil {
-						log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
+						log.Warn(
+							errors.WithMessagef(
+								err, "WorldController: run: failed to unregister client: %s", client.ID,
+							),
+						)
 					}
 				}()
 			}
