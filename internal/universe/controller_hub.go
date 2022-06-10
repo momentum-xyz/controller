@@ -316,7 +316,7 @@ func (ch *ControllerHub) spawnUserAt(
 	log.Infof("Spawning user %s on %s:[%f,%f,%f]", userID, wc.ID, pos.X, pos.Y, pos.Z)
 	name, typeId, err := ch.DB.GetUserInfo(userID)
 	if err != nil {
-		return errors.WithMessage(err, "failed to get user info")
+		log.Warn(errors.WithMessagef(err, "ControllerHub: spawnUserAt: failed to get user info: %s", userID))
 	}
 
 	wc.registerUser <- &User{

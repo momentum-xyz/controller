@@ -17,7 +17,6 @@ import (
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
-	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 
 	// Third-Party
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -415,7 +414,7 @@ func (s *Space) UpdatePosition(pos cmath.Vec3, theta float64, force bool) error 
 		s.world.spawnNeedUpdate.Set(true)
 
 		msg := posbus.NewSetStaticObjectPositionMsg()
-		msg.SetPosition(s.id, pputils.Vec3(pos))
+		msg.SetPosition(s.id, pos)
 		if s.initialized {
 			s.world.Broadcast(msg.WebsocketMessage())
 		}

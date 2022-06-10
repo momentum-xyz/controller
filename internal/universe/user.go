@@ -11,7 +11,6 @@ import (
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
-	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
@@ -75,7 +74,7 @@ func (u *User) Register(wc *WorldController) error {
 	*u.pos = ipos
 	u.world = wc
 	if err := u.world.UserOnlineAction(u.ID); err != nil {
-		return errors.WithMessagef(err, "failed to handle user online action: %s", u.ID)
+		log.Warn(errors.WithMessagef(err, "User: Register: failed to handle user online action: %s", u.ID))
 	}
 	u.lastUpdate = int64(0)
 	u.currentSpace.Store(uuid.Nil)
@@ -91,7 +90,7 @@ func (u *User) Register(wc *WorldController) error {
 		return errors.WithMessage(err, "failed to send meta msg")
 	}
 	log.Info("send own position")
-	if err := u.connection.SendDirectly(posbus.NewSendPositionMsg(pputils.Vec3(ipos)).WebsocketMessage()); err != nil {
+	if err := u.connection.SendDirectly(posbus.NewSendPositionMsg(ipos).WebsocketMessage()); err != nil {
 		return errors.WithMessage(err, "failed to send position")
 	}
 	log.Info("send initial world")
