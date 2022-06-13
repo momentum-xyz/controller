@@ -379,7 +379,7 @@ func (wc *WorldController) AddUserToWorld(u *User) error {
 	}
 	if err := u.connection.SendDirectly(
 		posbus.NewRelayToReactMsg(
-			"posbus", []byte("connected"),
+			"posbus", []byte(`{"status":"connected"}`),
 		).WebsocketMessage(),
 	); err != nil {
 		return errors.WithMessage(err, "failed to send connection notification message")
