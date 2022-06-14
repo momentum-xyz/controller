@@ -157,7 +157,6 @@ func (s *Space) MQTTEffectsHandler(msg []byte) {
 // }
 
 func (s *Space) SendToUsersOnSpace(msg *websocket.PreparedMessage) {
-	log.Warnf("=====================\nSending on space: %s", s.id)
 	if s.id == s.world.ID {
 		s.world.Broadcast(msg)
 	} else {
@@ -166,7 +165,6 @@ func (s *Space) SendToUsersOnSpace(msg *websocket.PreparedMessage) {
 			u.connection.Send(msg)
 		}
 	}
-	log.Warn("=====================")
 }
 
 func (s *Space) UpdateSpace() error {

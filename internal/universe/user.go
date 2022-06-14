@@ -9,7 +9,6 @@ import (
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
-	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -168,23 +167,15 @@ func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 
 func (u *User) UserOfflineAction() error {
 	log.Info("User: UserOfflineAction:", u.ID.String())
-	if err := u.world.hub.DB.RemoveOnline(u.ID, u.world.ID); err != nil {
-		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by world id"))
+	if err := u.world.hub.WorldStorage.RemoveWorldOnlineUser(u.ID, u.world.GetID()); err != nil {
+		log.Warn(errors.WithMessagef(err, "User: UserOfflineAction: failed to remove world online user: %s, %s", u.ID, u.world.GetID()))
 	}
-	cspace := utils.GetFromAny(u.currentSpace.Load(), uuid.Nil)
-	if cspace != uuid.Nil {
-		if err := u.world.hub.DB.RemoveOnline(u.ID, cspace); err != nil {
-			log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by space"))
-		}
-		// u.currentSpace. = uuid.Nil
-	}
-	if err := u.world.hub.DB.RemoveDynamicWorldMembership(u.ID, u.world.ID); err != nil {
-		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove membership from db"))
+	if err := u.world.hub.WorldStorage.RemoveUserDynamicMembership(u.ID); err != nil {
+		log.Warn(errors.WithMessagef(err, "User: UserOfflineAction: failed to remove user dynamic membership: %s", u.ID))
 	}
 	if u.isGuest {
 		u.world.hub.RemoveUserWithDelay(u.ID, defaultDelayForUsersForRemove)
 	}
-
 	return nil
 }
 
@@ -272,7 +263,10 @@ func (u *User) Send(m *websocket.PreparedMessage) {
 }
 
 func (u *User) UpdateUsersOnSpace(spaceID uuid.UUID) error {
-	space, _ := u.world.spaces.Get(spaceID)
+	space, ok := u.world.spaces.Get(spaceID)
+	if !ok {
+		return nil
+	}
 	p := influxdb2.NewPoint(
 		"space_users",
 		map[string]string{"world": u.world.influxtag, "space": space.Name},

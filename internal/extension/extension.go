@@ -17,7 +17,7 @@ type WorldController interface {
 	GetConfig() *config.World
 	GetBuilder() *message.Builder
 	GetStorage() *storage.Database
-	GetId() uuid.UUID
+	GetID() uuid.UUID
 	GetExtensionStorage() string
 	GetSpacePosition(id uuid.UUID) (cmath.Vec3, error)
 	GetSpacePresent(id uuid.UUID) bool

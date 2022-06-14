@@ -100,6 +100,9 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	if err := hub.GetNodeSettings(); err != nil {
 		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to get node settings"))
 	}
+	if err := hub.SanitizeOnlineUsers(); err != nil {
+		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to sanitize online users"))
+	}
 	if err := hub.RemoveGuestsWithDelay(); err != nil {
 		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to remove guests with delay"))
 	}
@@ -116,6 +119,37 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	hub.mqtt.SafeSubscribe("updates/spaces/changed", 1, safemqtt.LogMQTTMessageHandler("spaces changed", hub.ChangeHandler))
 
 	return hub, nil
+}
+
+func (ch *ControllerHub) SanitizeOnlineUsers() error {
+	log.Info("Sanitizing online users")
+	if err := ch.DB.RemoveAllOnlineUsers(); err != nil {
+		return errors.WithMessage(err, "failed to remove all online users")
+	}
+	return ch.DB.RemoveAllDynamicMembership()
+
+	// NOTE: for future
+	// rows, err := wc.hub.DB.Query(`call GetSpaceDescendantsIDs(?,100);`, utils.BinId(wc.ID))
+	// if err != nil {
+	//	return err
+	// }
+	// defer rows.Close()
+	//
+	// var ids [][]byte
+	// for rows.Next() {
+	//	var spaceId []byte
+	//	var parentId []byte
+	//	var level uint32
+	//	err := rows.Scan(&spaceId, &parentId, &level)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	ids = append(ids, spaceId)
+	// }
+	//
+	// _, err = wc.hub.DB.Exec(`DELETE FROM online_users WHERE spaceId IN(?)`, bytes.Join(ids, []byte(",")))
+	// err != nil
+	// return err
 }
 
 func (ch *ControllerHub) RemoveGuestsWithDelay() error {
