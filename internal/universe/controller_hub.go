@@ -6,7 +6,6 @@ import (
 	"time"
 
 	// Momentum
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/mqtt"
@@ -16,22 +15,27 @@ import (
 	"github.com/momentum-xyz/controller/internal/storage"
 	"github.com/momentum-xyz/controller/internal/user"
 	"github.com/momentum-xyz/controller/internal/world"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 
+	// External
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	influx_db2 "github.com/influxdata/influxdb-client-go/v2"
-	// External
+	influx_api "github.com/influxdata/influxdb-client-go/v2/api"
+	influx_write "github.com/influxdata/influxdb-client-go/v2/api/write"
 	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
-	// influx_api "github.com/influxdata/influxdb-client-go/v2/api"
-	influx_write "github.com/influxdata/influxdb-client-go/v2/api/write"
 )
 
 const (
 	defaultDelayForUsersForRemove = 5 * time.Minute
-	selectNodeSettingsIdAndName   = `SELECT ns1.value AS id, ns2.value AS name FROM node_settings ns1
+	defaultInfluxDBTimeout        = 2 * time.Second
+)
+
+const (
+	selectNodeSettingsIdAndName = `SELECT ns1.value AS id, ns2.value AS name FROM node_settings ns1
     									JOIN node_settings ns2	WHERE ns1.name = 'id' AND ns2.name = 'name';`
 )
 
@@ -43,16 +47,16 @@ type node struct {
 }
 
 type ControllerHub struct {
-	cfg          *config.Config
-	Worlds       *utils.SyncMap[uuid.UUID, *WorldController]
-	node         node
-	mu           deadlock.RWMutex
-	DB           *storage.Database
-	SpaceStorage space.Storage
-	WorldStorage world.Storage
-	UserStorage  user.Storage
-	net          *net.Networking
-	// influx       influx_api.WriteAPIBlocking
+	cfg                     *config.Config
+	Worlds                  *utils.SyncMap[uuid.UUID, *WorldController]
+	node                    node
+	mu                      deadlock.RWMutex
+	DB                      *storage.Database
+	SpaceStorage            space.Storage
+	WorldStorage            world.Storage
+	UserStorage             user.Storage
+	net                     *net.Networking
+	influx                  influx_api.WriteAPIBlocking
 	mqtt                    safemqtt.Client
 	msgBuilder              *message.Builder
 	guestUserTypeId         uuid.UUID
@@ -73,6 +77,8 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 		return nil, errors.WithMessage(err, "failed to init mqtt client")
 	}
 
+	influxClient := influx_db2.NewClient(cfg.Influx.URL, cfg.Influx.TOKEN)
+
 	hub := &ControllerHub{
 		cfg:                     cfg,
 		Worlds:                  utils.NewSyncMap[uuid.UUID, *WorldController](),
@@ -81,6 +87,7 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 		WorldStorage:            world.NewStorage(*db.DB),
 		UserStorage:             user.NewStorage(*db.DB),
 		net:                     networking,
+		influx:                  influxClient.WriteAPIBlocking(cfg.Influx.ORG, cfg.Influx.BUCKET),
 		mqtt:                    mqttClient,
 		msgBuilder:              msgBuilder,
 		usersForRemoveWithDelay: utils.NewSyncMap[uuid.UUID, utils.Unique[context.CancelFunc]](),
@@ -90,11 +97,11 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 
 	go TimeInformer(hub.mqtt)
 
-	// client := influxdb2.NewClient(hub.cfg.Influx.URL, hub.cfg.Influx.TOKEN)
-	// hub.influx = client.WriteAPIBlocking(hub.cfg.Influx.ORG, hub.cfg.Influx.BUCKET)
-
 	if err := hub.GetNodeSettings(); err != nil {
 		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to get node settings"))
+	}
+	if err := hub.SanitizeOnlineUsers(); err != nil {
+		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to sanitize online users"))
 	}
 	if err := hub.RemoveGuestsWithDelay(); err != nil {
 		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to remove guests with delay"))
@@ -112,6 +119,37 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	hub.mqtt.SafeSubscribe("updates/spaces/changed", 1, safemqtt.LogMQTTMessageHandler("spaces changed", hub.ChangeHandler))
 
 	return hub, nil
+}
+
+func (ch *ControllerHub) SanitizeOnlineUsers() error {
+	log.Info("Sanitizing online users")
+	if err := ch.DB.RemoveAllOnlineUsers(); err != nil {
+		return errors.WithMessage(err, "failed to remove all online users")
+	}
+	return ch.DB.RemoveAllDynamicMembership()
+
+	// NOTE: for future
+	// rows, err := wc.hub.DB.Query(`call GetSpaceDescendantsIDs(?,100);`, utils.BinId(wc.ID))
+	// if err != nil {
+	//	return err
+	// }
+	// defer rows.Close()
+	//
+	// var ids [][]byte
+	// for rows.Next() {
+	//	var spaceId []byte
+	//	var parentId []byte
+	//	var level uint32
+	//	err := rows.Scan(&spaceId, &parentId, &level)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	ids = append(ids, spaceId)
+	// }
+	//
+	// _, err = wc.hub.DB.Exec(`DELETE FROM online_users WHERE spaceId IN(?)`, bytes.Join(ids, []byte(",")))
+	// err != nil
+	// return err
 }
 
 func (ch *ControllerHub) RemoveGuestsWithDelay() error {
@@ -197,10 +235,13 @@ func (ch *ControllerHub) NetworkRunner() {
 }
 
 func (ch *ControllerHub) WriteInfluxPoint(point *influx_write.Point) error {
-	return nil
-	// err := ch.influx.WritePoint(context.Background(), point)
-	// err != nil
-	// return err
+	ctx, cancel := context.WithTimeout(context.Background(), defaultInfluxDBTimeout)
+	defer func() {
+		cancel()
+		log.Warn("ControllerHub: WriteInfluxPoint: stat sent")
+	}()
+
+	return ch.influx.WritePoint(ctx, point)
 }
 
 // TODO: this method never ends
@@ -212,8 +253,12 @@ func (ch *ControllerHub) UpdateTotalUsers() {
 			log.Warn(errors.WithMessage(err, "ControllerHub: UpdateTotalUsers: failed to get users count"))
 			continue
 		}
+
 		p := influx_db2.NewPoint(
-			"ConnectedUsers", map[string]string{"node": tag}, map[string]interface{}{"count": numUsers}, time.Now(),
+			"ConnectedUsers",
+			map[string]string{"node": tag},
+			map[string]interface{}{"count": numUsers},
+			time.Now(),
 		)
 		if err := ch.WriteInfluxPoint(p); err != nil {
 			log.Warn(errors.WithMessage(err, "ControllerHub: UpdateTotalUsers: failed to write influx point"))
@@ -305,7 +350,7 @@ func (ch *ControllerHub) spawnUserAt(
 	log.Infof("Spawning user %s on %s:[%f,%f,%f]", userID, wc.ID, pos.X, pos.Y, pos.Z)
 	name, typeId, err := ch.DB.GetUserInfo(userID)
 	if err != nil {
-		return errors.WithMessage(err, "failed to get user info")
+		log.Warn(errors.WithMessagef(err, "ControllerHub: spawnUserAt: failed to get user info: %s", userID))
 	}
 
 	wc.registerUser <- &User{

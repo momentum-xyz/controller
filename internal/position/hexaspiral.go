@@ -4,7 +4,7 @@ import (
 	"math"
 	"math/rand"
 
-	cm "github.com/momentum-xyz/controller/internal/cmath"
+	cm "github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/utils"
 )
 

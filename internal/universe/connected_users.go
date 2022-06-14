@@ -131,7 +131,6 @@ func (cu *ConnectedUsers) BroadcastPositions() {
 func (cu *ConnectedUsers) BroadcastUsersUpdate() {
 	cu.BroadcastDisconnectedUsers()
 	cu.BroadcastPositions()
-
 }
 
 func (cu *ConnectedUsers) Num() int {
@@ -151,7 +150,7 @@ func (cu *ConnectedUsers) GetOnSpace(spaceId uuid.UUID) []*User {
 
 	ul := make([]*User, 0)
 	for _, u := range cu.users.Data {
-		if u.currentSpace.Load().(uuid.UUID) == spaceId {
+		if utils.GetFromAny(u.currentSpace.Load(), uuid.Nil) == spaceId {
 			ul = append(ul, u)
 		}
 	}

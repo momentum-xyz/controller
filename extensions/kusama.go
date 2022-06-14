@@ -9,21 +9,21 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	// Momentum
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
 	"github.com/momentum-xyz/controller/internal/mqtt"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
+	"github.com/sasha-s/go-deadlock"
 	// Third-Party
 	"github.com/pkg/errors"
 	"go.etcd.io/bbolt"
@@ -69,7 +69,7 @@ func NewKusama(controller extension.WorldController) extension.Extension {
 		TransactionBlockSpaceType: uuid.UUID{},
 		TransactionBlockAsset:     uuid.UUID{},
 		Initialized:               false,
-		blockMutex:                sync.Mutex{},
+		blockMutex:                deadlock.Mutex{},
 		bDB:                       nil,
 		blockBucket:               nil,
 		RelayChainPos:             cmath.Vec3{},
@@ -89,7 +89,7 @@ type Kusama struct {
 	TransactionBlockSpaceType   uuid.UUID
 	TransactionBlockAsset       uuid.UUID
 	Initialized                 bool
-	blockMutex                  sync.Mutex
+	blockMutex                  deadlock.Mutex
 	bDB                         *bbolt.DB
 	blockBucket                 []byte
 	RelayChainPos               cmath.Vec3
@@ -232,7 +232,7 @@ func (ksm *Kusama) Init() error {
 	}
 
 	extStorage := ksm.world.GetExtensionStorage()
-	file := filepath.Join(extStorage, fmt.Sprintf("kusama_%s.db", ksm.world.GetId().String()))
+	file := filepath.Join(extStorage, fmt.Sprintf("kusama_%s.db", ksm.world.GetID().String()))
 	ksm.bDB, err = bbolt.Open(file, 0666, nil)
 	if err != nil {
 		return errors.WithMessage(err, "failed to open bbolt storage file")
@@ -284,7 +284,7 @@ func (ksm *Kusama) WriteBestBlock(id uint32) error {
 	if id > ksm.bestBlock {
 		ksm.bestBlock = id
 		_, err := ksm.world.GetStorage().DB.Exec(writeBestBlockQuery,
-			utils.BinId(ksm.world.GetId()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
+			utils.BinId(ksm.world.GetID()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
 		)
 		return err
 	}
@@ -296,7 +296,7 @@ func (ksm *Kusama) WriteFinalizedBlock(id uint32) error {
 		ksm.finalizedBlock = id
 		_, err := ksm.world.GetStorage().DB.Exec(
 			writeFinalizedBlockQuery,
-			utils.BinId(ksm.world.GetId()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
+			utils.BinId(ksm.world.GetID()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
 		)
 		return err
 	}

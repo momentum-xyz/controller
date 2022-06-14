@@ -2,12 +2,9 @@ package universe
 
 import (
 	"encoding/json"
-	"github.com/pkg/errors"
-
 	"github.com/google/uuid"
-
 	"github.com/momentum-xyz/posbus-protocol/posbus"
-	pputils "github.com/momentum-xyz/posbus-protocol/utils"
+	"github.com/pkg/errors"
 )
 
 func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
@@ -28,6 +25,11 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger entered space: failed to update online by space id"))
 		}
+		go func() {
+			if err := u.UpdateUsersOnSpace(targetUUID); err != nil {
+				log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger entered space: failed to update users on space: %s", targetUUID))
+			}
+		}()
 	case posbus.TriggerLeftSpace:
 		targetUUID := m.Target()
 		u.currentSpace.Store(uuid.Nil)
@@ -37,6 +39,11 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
 			log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to update online by space id"))
 		}
+		go func() {
+			if err := u.UpdateUsersOnSpace(targetUUID); err != nil {
+				log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to update users on space: %s", targetUUID))
+			}
+		}()
 	case posbus.TriggerHighFive:
 		if err := u.HandleHighFive(m); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger high fives: failed to handle high five"))
@@ -120,7 +127,7 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 	)
 
 	effect := posbus.NewTriggerTransitionalBridgingEffectsOnPositionMsg(1)
-	effect.SetEffect(0, u.world.EffectsEmitter, pputils.Vec3(*u.pos), pputils.Vec3(*target.pos), 1001)
+	effect.SetEffect(0, u.world.EffectsEmitter, *u.pos, *target.pos, 1001)
 	u.world.Broadcast(effect.WebsocketMessage())
 
 	return nil

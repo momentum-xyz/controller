@@ -7,7 +7,7 @@ package universe
 import (
 	// STD
 	"encoding/json"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
 	"github.com/pkg/errors"
 	_ "net/http/pprof"
 	"strconv"
@@ -16,14 +16,15 @@ import (
 
 	// Momentum
 	"github.com/momentum-xyz/controller/extensions"
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/spacetype"
 	"github.com/momentum-xyz/controller/internal/storage"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
@@ -114,9 +115,6 @@ func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *messa
 	go utils.ChanMonitor("world.unregisterSpace", controller.unregisterSpace, 3*time.Second)
 	go utils.ChanMonitor("world.updateSpace", controller.updateSpace, 3*time.Second)
 
-	if err := controller.SanitizeOnlineUsers(); err != nil {
-		log.Error(errors.WithMessage(err, "newWorldController: failed to sanitize online users"))
-	}
 	if err := controller.UpdateMeta(); err != nil {
 		return nil, errors.WithMessage(err, "failed to update meta")
 	}
@@ -139,37 +137,6 @@ type WowMetadata struct {
 type StageModeSetMetadata struct {
 	StageModeStatus string   `json:"stageModeStatus"`
 	Users           []string `json:"ConnectedUsers"`
-}
-
-func (wc *WorldController) SanitizeOnlineUsers() error {
-	log.Info("Sanitizing online users:", wc.ID)
-	if err := wc.hub.WorldStorage.CleanOnlineUsers(wc.ID); err != nil {
-		return errors.WithMessage(err, "failed to clean online users")
-	}
-	return wc.hub.WorldStorage.CleanDynamicMembership(wc.ID)
-
-	// NOTE: for future
-	// rows, err := wc.hub.DB.Query(`call GetSpaceDescendantsIDs(?,100);`, utils.BinId(wc.ID))
-	// if err != nil {
-	//	return err
-	// }
-	// defer rows.Close()
-	//
-	// var ids [][]byte
-	// for rows.Next() {
-	//	var spaceId []byte
-	//	var parentId []byte
-	//	var level uint32
-	//	err := rows.Scan(&spaceId, &parentId, &level)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	ids = append(ids, spaceId)
-	// }
-	//
-	// _, err = wc.hub.DB.Exec(`DELETE FROM online_users WHERE spaceId IN(?)`, bytes.Join(ids, []byte(",")))
-	// err != nil
-	// return err
 }
 
 func (wc *WorldController) LoadExtensions() error {
@@ -376,6 +343,15 @@ func (wc *WorldController) AddUserToWorld(u *User) error {
 	if err := u.connection.SendDirectly(wc.spawnMsg.Load().(*websocket.PreparedMessage)); err != nil {
 		return errors.WithMessage(err, "failed to send spawn msg")
 	}
+	if err := u.connection.SendDirectly(
+		posbus.NewRelayToReactMsg(
+			"posbus", []byte(`{"status":"connected"}`),
+		).WebsocketMessage(),
+	); err != nil {
+		return errors.WithMessage(err, "failed to send connection notification message")
+
+	}
+
 	// fmt.Println(len(wc.spaces))
 	space.RecursiveSendAllAttributes(u.connection)
 	space.RecursiveSendAllStrings(u.connection)
@@ -444,21 +420,37 @@ func (wc *WorldController) run() error {
 				client := <-wc.registerUser
 				go func() {
 					if err := client.Register(wc); err != nil {
-						log.Warn(errors.WithMessagef(err, "WorldController: run: failed to register client: %s", client.ID))
+						log.Warn(
+							errors.WithMessagef(
+								err, "WorldController: run: failed to register client: %s", client.ID,
+							),
+						)
 					}
 				}()
 			}
 			log.Info("Reg UserDone")
 		case client := <-wc.unregisterUser:
-			if err := client.Unregister(wc); err != nil {
-				log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
-			}
+			go func() {
+				if err := client.Unregister(wc); err != nil {
+					log.Warn(
+						errors.WithMessagef(
+							err, "WorldController: run: failed to unregister client: %s", client.ID,
+						),
+					)
+				}
+			}()
 			n := len(wc.unregisterUser)
 			for i := 0; i < n; i++ {
 				client := <-wc.unregisterUser
-				if err := client.Unregister(wc); err != nil {
-					log.Warn(errors.WithMessagef(err, "WorldController: run: failed to unregister client: %s", client.ID))
-				}
+				go func() {
+					if err := client.Unregister(wc); err != nil {
+						log.Warn(
+							errors.WithMessagef(
+								err, "WorldController: run: failed to unregister client: %s", client.ID,
+							),
+						)
+					}
+				}()
 			}
 		}
 		// logger.Logln(4, "Pass loop")
@@ -507,7 +499,7 @@ func (wc *WorldController) GetBuilder() *message.Builder {
 	return wc.msgBuilder
 }
 
-func (wc *WorldController) GetId() uuid.UUID {
+func (wc *WorldController) GetID() uuid.UUID {
 	return wc.ID
 }
 

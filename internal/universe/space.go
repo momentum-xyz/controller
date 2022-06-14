@@ -9,15 +9,14 @@ import (
 	"time"
 
 	// Momentum
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/position"
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/controller/internal/spacetype"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
-	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 
 	// Third-Party
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -158,7 +157,6 @@ func (s *Space) MQTTEffectsHandler(msg []byte) {
 // }
 
 func (s *Space) SendToUsersOnSpace(msg *websocket.PreparedMessage) {
-	fmt.Println("Sending on space", s.id)
 	if s.id == s.world.ID {
 		s.world.Broadcast(msg)
 	} else {
@@ -167,7 +165,6 @@ func (s *Space) SendToUsersOnSpace(msg *websocket.PreparedMessage) {
 			u.connection.Send(msg)
 		}
 	}
-	fmt.Println("==================")
 }
 
 func (s *Space) UpdateSpace() error {
@@ -415,7 +412,7 @@ func (s *Space) UpdatePosition(pos cmath.Vec3, theta float64, force bool) error 
 		s.world.spawnNeedUpdate.Set(true)
 
 		msg := posbus.NewSetStaticObjectPositionMsg()
-		msg.SetPosition(s.id, pputils.Vec3(pos))
+		msg.SetPosition(s.id, pos)
 		if s.initialized {
 			s.world.Broadcast(msg.WebsocketMessage())
 		}

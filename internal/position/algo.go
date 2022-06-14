@@ -1,6 +1,6 @@
 package position
 
-import "github.com/momentum-xyz/controller/internal/cmath"
+import "github.com/momentum-xyz/controller/pkg/cmath"
 
 const (
 	defaultVShiftValue = 10.0

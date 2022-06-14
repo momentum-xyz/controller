@@ -1,9 +1,8 @@
 package safemqtt
 
 import (
-	"github.com/pkg/errors"
-
 	mqtt "github.com/eclipse/paho.mqtt.golang"
+	"github.com/pkg/errors"
 )
 
 type ErrMQTTMessageHandler func(client mqtt.Client, msg mqtt.Message) error

@@ -2,9 +2,9 @@ package extension
 
 import (
 	// Momentum
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/storage"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 
 	// Third-party
@@ -17,7 +17,7 @@ type WorldController interface {
 	GetConfig() *config.World
 	GetBuilder() *message.Builder
 	GetStorage() *storage.Database
-	GetId() uuid.UUID
+	GetID() uuid.UUID
 	GetExtensionStorage() string
 	GetSpacePosition(id uuid.UUID) (cmath.Vec3, error)
 	GetSpacePresent(id uuid.UUID) bool

@@ -6,9 +6,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/momentum-xyz/controller/internal/cmath"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/logger"
+	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/utils"
 
 	"github.com/google/uuid"
@@ -22,7 +22,7 @@ const (
 	getRandomWorldQuery                             = `SELECT id FROM spaces WHERE parentId = 0x00000000000000000000000000000000 AND id != 0x00000000000000000000000000000000;`
 	getDefaultEntranceWorldQuery                    = `SELECT value FROM node_settings WHERE name = 'EntranceWorld';`
 	getWorldByURLQuery                              = `SELECT worldId FROM url_mapping WHERE URL = ?;`
-	getParentWorldQuery                             = `SELECT GetParentWorldByID(id) FROM spaces WHERE  id = ?;`
+	getParentWorldQuery                             = `SELECT GetParentWorldByID(id) FROM spaces WHERE id = ?;`
 	getastUserWorldQuery                            = `SELECT worldId FROM user_lkp WHERE userId = ? ORDER BY updated_at DESC;`
 	isSpacePresentQuery                             = `SELECT id FROM spaces WHERE id = ? LIMIT 1;`
 	removeOnlineUserByIdAndSpaceIdQuery             = `DELETE FROM online_users WHERE userId = ? AND spaceId = ?;`
@@ -30,6 +30,8 @@ const (
 	removeDynamicWorldMembershipByIdAndWorldIdQuery = `DELETE FROM user_spaces_dynamic WHERE userId = ? AND spaceId = ?;`
 	removeFromUsersQuery                            = `DELETE FROM users WHERE id = ?;`
 	removeManyFromUsersQuery                        = `DELETE FROM users WHERE id IN(?);`
+	removeAllOnlineUsersQuery                       = `TRUNCATE online_users;`
+	removeAllDynamicMembershipQuery                 = `TRUNCATE user_spaces_dynamic;`
 	getUserLastKnownPositionQuery                   = `SELECT spaceId,x,y,z FROM user_lkp WHERE  userId = ? AND worldId = ?;`
 	getWorldDefaultSpawnPositionQuery               = `SELECT SpawnSpace,SpawnDislocation FROM world_definition WHERE id = ?;`
 	getGuestUserTypeIDQuery                         = `SELECT id FROM user_types WHERE name = ?;`
@@ -446,6 +448,38 @@ func (DB *Database) WriteLastKnownPosition(
 	}
 
 	log.Info("Saved pos for " + userId.String())
+	return nil
+}
+
+func (DB *Database) RemoveAllOnlineUsers() error {
+	res, err := DB.Exec(removeAllOnlineUsersQuery)
+	if err != nil {
+		return errors.WithMessage(err, "failed to exec db")
+	}
+
+	var affected int64
+	affected, err = res.RowsAffected()
+	if err != nil {
+		return nil
+	}
+
+	log.Debugf("Storage: RemoveAllOnlineUsers: %d", affected)
+	return nil
+}
+
+func (DB *Database) RemoveAllDynamicMembership() error {
+	res, err := DB.Exec(removeAllDynamicMembershipQuery)
+	if err != nil {
+		return errors.WithMessage(err, "failed to query db")
+	}
+
+	var affected int64
+	affected, err = res.RowsAffected()
+	if err != nil {
+		return nil
+	}
+
+	log.Debugf("Storage: RemoveAllDynamicMembership: %d", affected)
 	return nil
 }
 
