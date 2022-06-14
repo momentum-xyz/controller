@@ -115,9 +115,6 @@ func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *messa
 	go utils.ChanMonitor("world.unregisterSpace", controller.unregisterSpace, 3*time.Second)
 	go utils.ChanMonitor("world.updateSpace", controller.updateSpace, 3*time.Second)
 
-	if err := controller.SanitizeOnlineUsers(); err != nil {
-		log.Error(errors.WithMessage(err, "newWorldController: failed to sanitize online users"))
-	}
 	if err := controller.UpdateMeta(); err != nil {
 		return nil, errors.WithMessage(err, "failed to update meta")
 	}
@@ -140,37 +137,6 @@ type WowMetadata struct {
 type StageModeSetMetadata struct {
 	StageModeStatus string   `json:"stageModeStatus"`
 	Users           []string `json:"ConnectedUsers"`
-}
-
-func (wc *WorldController) SanitizeOnlineUsers() error {
-	log.Info("Sanitizing online users:", wc.ID)
-	if err := wc.hub.WorldStorage.CleanOnlineUsers(wc.ID); err != nil {
-		return errors.WithMessage(err, "failed to clean online users")
-	}
-	return wc.hub.WorldStorage.CleanDynamicMembership(wc.ID)
-
-	// NOTE: for future
-	// rows, err := wc.hub.DB.Query(`call GetSpaceDescendantsIDs(?,100);`, utils.BinId(wc.ID))
-	// if err != nil {
-	//	return err
-	// }
-	// defer rows.Close()
-	//
-	// var ids [][]byte
-	// for rows.Next() {
-	//	var spaceId []byte
-	//	var parentId []byte
-	//	var level uint32
-	//	err := rows.Scan(&spaceId, &parentId, &level)
-	//	if err != nil {
-	//		return err
-	//	}
-	//	ids = append(ids, spaceId)
-	// }
-	//
-	// _, err = wc.hub.DB.Exec(`DELETE FROM online_users WHERE spaceId IN(?)`, bytes.Join(ids, []byte(",")))
-	// err != nil
-	// return err
 }
 
 func (wc *WorldController) LoadExtensions() error {
@@ -533,7 +499,7 @@ func (wc *WorldController) GetBuilder() *message.Builder {
 	return wc.msgBuilder
 }
 
-func (wc *WorldController) GetId() uuid.UUID {
+func (wc *WorldController) GetID() uuid.UUID {
 	return wc.ID
 }
 

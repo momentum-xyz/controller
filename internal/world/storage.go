@@ -10,17 +10,17 @@ import (
 )
 
 const (
-	selectWorldNameByIdQuery     = `SELECT name FROM spaces WHERE id = ? LIMIT 1;`
-	selectAllSpacesQuery         = `SELECT id FROM spaces WHERE parentId = ? AND id != ?;`
-	deleteOnlineUsersQuery       = `DELETE FROM online_users WHERE spaceId = ?;`
-	deleteDynamicMembershipQuery = `DELETE FROM user_spaces_dynamic WHERE spaceId = ?;`
+	selectWorldNameByIdQuery         = `SELECT name FROM spaces WHERE id = ? LIMIT 1;`
+	selectAllSpacesQuery             = `SELECT id FROM spaces WHERE parentId = ? AND id != ?;`
+	removeWorldOnlineUsersQuery      = `DELETE FROM online_users WHERE userId = ? AND GetParentWorldByID(spaceId) = ?;`
+	removeUserDynamicMembershipQuery = `DELETE FROM user_spaces_dynamic WHERE userId = ?;`
 )
 
 type Storage interface {
 	GetName(id uuid.UUID) (string, error)
 	GetWorlds() ([]uuid.UUID, error)
-	CleanOnlineUsers(spaceID uuid.UUID) error
-	CleanDynamicMembership(spaceID uuid.UUID) error
+	RemoveWorldOnlineUser(worldID, userID uuid.UUID) error
+	RemoveUserDynamicMembership(userID uuid.UUID) error
 }
 
 type storage struct {
@@ -76,8 +76,8 @@ func (s *storage) GetName(id uuid.UUID) (string, error) {
 	return wName, nil
 }
 
-func (s *storage) CleanOnlineUsers(spaceID uuid.UUID) error {
-	res, err := s.db.Exec(deleteOnlineUsersQuery, utils.BinId(spaceID))
+func (s *storage) RemoveWorldOnlineUser(userID, worldID uuid.UUID) error {
+	res, err := s.db.Exec(removeWorldOnlineUsersQuery, utils.BinId(userID), utils.BinId(worldID))
 	if err != nil {
 		return errors.WithMessage(err, "failed to exec db")
 	}
@@ -89,12 +89,12 @@ func (s *storage) CleanOnlineUsers(spaceID uuid.UUID) error {
 		return nil
 	}
 
-	log.Debug("World storage: CleanOnlineUsers:", spaceID.String(), affected)
-	return err
+	log.Debugf("World storage: RemoveWorldOnlineUser: %s, %s, %d", userID, worldID, affected)
+	return nil
 }
 
-func (s *storage) CleanDynamicMembership(spaceID uuid.UUID) error {
-	res, err := s.db.Exec(deleteDynamicMembershipQuery, utils.BinId(spaceID))
+func (s *storage) RemoveUserDynamicMembership(userID uuid.UUID) error {
+	res, err := s.db.Exec(removeUserDynamicMembershipQuery, utils.BinId(userID))
 	if err != nil {
 		return errors.WithMessage(err, "failed to exec db")
 	}
@@ -106,6 +106,6 @@ func (s *storage) CleanDynamicMembership(spaceID uuid.UUID) error {
 		return nil
 	}
 
-	log.Debug("World storage: CleanDynamicMembership:", spaceID.String(), affected)
-	return err
+	log.Debugf("World storage: RemoveUserDynamicMembership: %s, %d", userID.String(), affected)
+	return nil
 }
