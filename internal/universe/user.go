@@ -9,9 +9,7 @@ import (
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
-	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
-	pputils "github.com/momentum-xyz/posbus-protocol/utils"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
@@ -75,7 +73,7 @@ func (u *User) Register(wc *WorldController) error {
 	*u.pos = ipos
 	u.world = wc
 	if err := u.world.UserOnlineAction(u.ID); err != nil {
-		return errors.WithMessagef(err, "failed to handle user online action: %s", u.ID)
+		log.Warn(errors.WithMessagef(err, "User: Register: failed to handle user online action: %s", u.ID))
 	}
 	u.lastUpdate = int64(0)
 	u.currentSpace.Store(uuid.Nil)
@@ -91,7 +89,7 @@ func (u *User) Register(wc *WorldController) error {
 		return errors.WithMessage(err, "failed to send meta msg")
 	}
 	log.Info("send own position")
-	if err := u.connection.SendDirectly(posbus.NewSendPositionMsg(pputils.Vec3(ipos)).WebsocketMessage()); err != nil {
+	if err := u.connection.SendDirectly(posbus.NewSendPositionMsg(ipos).WebsocketMessage()); err != nil {
 		return errors.WithMessage(err, "failed to send position")
 	}
 	log.Info("send initial world")
@@ -169,23 +167,15 @@ func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 
 func (u *User) UserOfflineAction() error {
 	log.Info("User: UserOfflineAction:", u.ID.String())
-	if err := u.world.hub.DB.RemoveOnline(u.ID, u.world.ID); err != nil {
-		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by world id"))
+	if err := u.world.hub.WorldStorage.RemoveWorldOnlineUser(u.ID, u.world.GetID()); err != nil {
+		log.Warn(errors.WithMessagef(err, "User: UserOfflineAction: failed to remove world online user: %s, %s", u.ID, u.world.GetID()))
 	}
-	cspace := utils.GetFromAny(u.currentSpace.Load(), uuid.Nil)
-	if cspace != uuid.Nil {
-		if err := u.world.hub.DB.RemoveOnline(u.ID, cspace); err != nil {
-			log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove online from db by space"))
-		}
-		// u.currentSpace. = uuid.Nil
-	}
-	if err := u.world.hub.DB.RemoveDynamicWorldMembership(u.ID, u.world.ID); err != nil {
-		log.Warn(errors.WithMessage(err, "User: UserOfflineAction: failed to remove membership from db"))
+	if err := u.world.hub.WorldStorage.RemoveUserDynamicMembership(u.ID); err != nil {
+		log.Warn(errors.WithMessagef(err, "User: UserOfflineAction: failed to remove user dynamic membership: %s", u.ID))
 	}
 	if u.isGuest {
 		u.world.hub.RemoveUserWithDelay(u.ID, defaultDelayForUsersForRemove)
 	}
-
 	return nil
 }
 
@@ -273,7 +263,10 @@ func (u *User) Send(m *websocket.PreparedMessage) {
 }
 
 func (u *User) UpdateUsersOnSpace(spaceID uuid.UUID) error {
-	space, _ := u.world.spaces.Get(spaceID)
+	space, ok := u.world.spaces.Get(spaceID)
+	if !ok {
+		return nil
+	}
 	p := influxdb2.NewPoint(
 		"space_users",
 		map[string]string{"world": u.world.influxtag, "space": space.Name},

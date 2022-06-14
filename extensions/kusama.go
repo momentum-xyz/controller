@@ -232,7 +232,7 @@ func (ksm *Kusama) Init() error {
 	}
 
 	extStorage := ksm.world.GetExtensionStorage()
-	file := filepath.Join(extStorage, fmt.Sprintf("kusama_%s.db", ksm.world.GetId().String()))
+	file := filepath.Join(extStorage, fmt.Sprintf("kusama_%s.db", ksm.world.GetID().String()))
 	ksm.bDB, err = bbolt.Open(file, 0666, nil)
 	if err != nil {
 		return errors.WithMessage(err, "failed to open bbolt storage file")
@@ -284,7 +284,7 @@ func (ksm *Kusama) WriteBestBlock(id uint32) error {
 	if id > ksm.bestBlock {
 		ksm.bestBlock = id
 		_, err := ksm.world.GetStorage().DB.Exec(writeBestBlockQuery,
-			utils.BinId(ksm.world.GetId()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
+			utils.BinId(ksm.world.GetID()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
 		)
 		return err
 	}
@@ -296,7 +296,7 @@ func (ksm *Kusama) WriteFinalizedBlock(id uint32) error {
 		ksm.finalizedBlock = id
 		_, err := ksm.world.GetStorage().DB.Exec(
 			writeFinalizedBlockQuery,
-			utils.BinId(ksm.world.GetId()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
+			utils.BinId(ksm.world.GetID()), strconv.Itoa(int(id)), strconv.Itoa(int(id)),
 		)
 		return err
 	}
