@@ -212,6 +212,7 @@ func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
 	if err := c.conn.WritePreparedMessage(m); err != nil {
 		return errors.WithMessage(err, "failed to write prepared message")
 	}
+	c.send <- m
 
 	return nil
 }
