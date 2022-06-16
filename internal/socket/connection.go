@@ -133,9 +133,14 @@ func (c *Connection) EnableWriting() {
 func (c *Connection) StartWritePump() {
 	pingTicker := time.NewTicker(pingPeriod)
 	defer func() {
-		pingTicker.Stop()
+		go func() {
+			for range c.send {
+				<-c.send
+			}
+		}()
 		c.Close()
 		c.OnPumpEnd()
+		pingTicker.Stop()
 		log.Info("Connection: end of write pump")
 	}()
 
