@@ -80,14 +80,18 @@ func (u *User) Register(wc *WorldController) error {
 
 	u.connection.SetReceiveCallback(u.OnMessage)
 	u.connection.SetPumpEndCallback(func() { u.world.unregisterUser <- u })
-	go u.connection.StartWritePump()
 	go u.connection.StartReadPump()
+	go u.connection.StartWritePump()
 
 	log.Info("send world meta")
 	// TODO: Update MetaMSg
-	u.connection.Send(u.world.metaMsg)
+	if err := u.connection.SendDirectly(u.world.metaMsg); err != nil {
+		return errors.WithMessage(err, "failed to send meta msg")
+	}
 	log.Info("send own position")
-	u.connection.Send(posbus.NewSendPositionMsg(ipos).WebsocketMessage())
+	if err := u.connection.SendDirectly(posbus.NewSendPositionMsg(ipos).WebsocketMessage()); err != nil {
+		return errors.WithMessage(err, "failed to send position")
+	}
 	log.Info("send initial world")
 	// AddToWorld is happening there
 	if err := u.world.AddUserToWorld(u); err != nil {

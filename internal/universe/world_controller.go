@@ -340,12 +340,17 @@ func (wc *WorldController) AddUserToWorld(u *User) error {
 			wc.spawnNeedUpdate.Set(false)
 		}
 	}
-	u.connection.Send(wc.spawnMsg.Load().(*websocket.PreparedMessage))
-	u.connection.Send(
+	if err := u.connection.SendDirectly(wc.spawnMsg.Load().(*websocket.PreparedMessage)); err != nil {
+		return errors.WithMessage(err, "failed to send spawn msg")
+	}
+	if err := u.connection.SendDirectly(
 		posbus.NewRelayToReactMsg(
 			"posbus", []byte(`{"status":"connected"}`),
 		).WebsocketMessage(),
-	)
+	); err != nil {
+		return errors.WithMessage(err, "failed to send connection notification message")
+
+	}
 
 	// fmt.Println(len(wc.spaces))
 	space.RecursiveSendAllAttributes(u.connection)
