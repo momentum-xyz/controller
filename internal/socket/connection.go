@@ -28,7 +28,7 @@ const (
 var log = logger.L()
 
 type Connection struct {
-	send      chan *websocket.PreparedMessage
+	sendCh    chan *websocket.PreparedMessage
 	buffer    *queue.Queue
 	OnReceive func(m *posbus.Message)
 	OnPumpEnd func()
@@ -61,7 +61,7 @@ func (c *Connection) Close() {
 	c.mu.Unlock()
 
 	log.Info("Connection: closing connection and chan")
-	close(c.send)
+	close(c.sendCh)
 	c.conn.SetWriteDeadline(time.Now().Add(writeWait))
 	c.conn.WriteMessage(websocket.CloseMessage, []byte{})
 	c.conn.Close()
@@ -77,7 +77,7 @@ func (c *Connection) SetPumpEndCallback(f func()) {
 
 func NewConnection(conn *websocket.Conn) *Connection {
 	c := &Connection{
-		send:      make(chan *websocket.PreparedMessage, 10),
+		sendCh:    make(chan *websocket.PreparedMessage, 10),
 		buffer:    queue.New(),
 		OnReceive: OnReceiveStub,
 		OnPumpEnd: OnPumpEndStub,
@@ -142,18 +142,18 @@ func (c *Connection) StartWritePump() {
 	log.Info("Connection: starting write pump")
 	for {
 		select {
-		case message, ok := <-c.send:
+		case message, ok := <-c.sendCh:
 			if !ok {
 				log.Debug("Connection: write pump: chan closed")
 				return
 			}
 			if c.canWrite.Get() {
 				for c.buffer.Length() > 0 {
-					if err := c.SendDirectly(utils.GetFromAny[*websocket.PreparedMessage](c.buffer.Remove(), nil)); err != nil {
+					if err := c.send(utils.GetFromAny[*websocket.PreparedMessage](c.buffer.Remove(), nil)); err != nil {
 						return
 					}
 				}
-				if err := c.SendDirectly(message); err != nil {
+				if err := c.send(message); err != nil {
 					return
 				}
 			} else {
@@ -171,7 +171,7 @@ func (c *Connection) StartWritePump() {
 			}
 			if c.canWrite.Get() {
 				for c.buffer.Length() > 0 {
-					if err := c.SendDirectly(c.buffer.Remove().(*websocket.PreparedMessage)); err != nil {
+					if err := c.send(utils.GetFromAny[*websocket.PreparedMessage](c.buffer.Remove(), nil)); err != nil {
 						return
 					}
 				}
@@ -191,10 +191,10 @@ func (c *Connection) Send(m *websocket.PreparedMessage) {
 	if c.closed {
 		return
 	}
-	c.send <- m
+	c.sendCh <- m
 }
 
-func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
+func (c *Connection) send(m *websocket.PreparedMessage) error {
 	if m == nil {
 		return nil
 	}
