@@ -181,6 +181,8 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 	if err := auth.VerifyToken(token, n.cfg.Common.IntrospectURL); err != nil {
 		userID := message.DeserializeGUID(handshake.UserId(nil))
 		log.Errorf("error: wrong PreHandShake (invalid token: %s), aborting connection: %s", userID, err)
+		socketConnection.SetWriteDeadline(time.Now().Add(10 * time.Second))
+		socketConnection.WritePreparedMessage(posbus.NewSignalMsg(posbus.SignalInvalidToken).WebsocketMessage())
 		return nil, nil, false, nil
 	}
 
