@@ -11,7 +11,6 @@ import (
 	"github.com/pkg/errors"
 	_ "net/http/pprof"
 	"strconv"
-	"sync/atomic"
 	"time"
 
 	// Momentum
@@ -74,12 +73,6 @@ type WorldController struct {
 	// Unregister requests from users.
 	unregisterUser chan *User
 
-	// activity chan string
-
-	// spawn stuff
-	spawnMsg        atomic.Value
-	spawnNeedUpdate utils.TAtomBool
-
 	AdditionalExtensions map[string]extension.Extension
 	MainExtension        extension.Extension
 	EffectsEmitter       uuid.UUID
@@ -105,7 +98,6 @@ func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *messa
 		unregisterSpace: make(chan uuid.UUID, 1024),
 		updateSpace:     make(chan uuid.UUID, 1024),
 	}
-	controller.spawnNeedUpdate.Set(true)
 	controller.users = NewUsers(&controller)
 	controller.spaces = newSpaces(&controller, hub.SpaceStorage, msgBuilder)
 
@@ -325,39 +317,52 @@ func (wc *WorldController) AddUserToWorld(u *User) error {
 	wc.users.Add(u)
 	log.Info("User added to the world")
 
-	space, ok := wc.spaces.Get(wc.ID)
-	if !ok {
-		return errors.Errorf("failed to get space: %s", wc.ID)
+	if err := func() error {
+		wc.spaces.spaces.Mu.RLock()
+		defer wc.spaces.spaces.Mu.RUnlock()
+
+		for _, space := range wc.spaces.spaces.Data {
+			if err := u.connection.SendDirectly(space.GetObjectDef()); err != nil {
+				return errors.WithMessage(err, "failed to send space object definition")
+			}
+		}
+		log.Info("WorldController: AddUserToWorld: world spaces object definitions sent")
+		return nil
+	}(); err != nil {
+		return err
 	}
 
-	if wc.spawnNeedUpdate.Get() {
-		if wc.spaces.Num() > 0 {
-			log.Info("***********Update")
-			defArray := make([]message.ObjectDefinition, wc.spaces.Num())
-			i := 0
-			space.PushObjDef(defArray, &i)
-			wc.spawnMsg.Store(wc.msgBuilder.MsgAddStaticObjects(defArray))
-			wc.spawnNeedUpdate.Set(false)
-		}
+	if err := u.connection.SendDirectly(
+		posbus.NewSignalMsg(
+			posbus.SignalSpawn,
+		).WebsocketMessage(),
+	); err != nil {
+		return errors.WithMessage(err, "failed to send spawn signal")
 	}
-	if err := u.connection.SendDirectly(wc.spawnMsg.Load().(*websocket.PreparedMessage)); err != nil {
-		return errors.WithMessage(err, "failed to send spawn msg")
-	}
+
 	if err := u.connection.SendDirectly(
 		posbus.NewRelayToReactMsg(
 			"posbus", []byte(`{"status":"connected"}`),
 		).WebsocketMessage(),
 	); err != nil {
 		return errors.WithMessage(err, "failed to send connection notification message")
-
 	}
 
-	// fmt.Println(len(wc.spaces))
-	space.RecursiveSendAllAttributes(u.connection)
-	space.RecursiveSendAllStrings(u.connection)
-	space.RecursiveSendAllTextures(u.connection)
+	return nil
+}
+
+func (wc *WorldController) SendWorldData(u *User) error {
+	world, ok := wc.spaces.Get(wc.ID)
+	if !ok {
+		return errors.Errorf("failed to get world: %s", wc.ID)
+	}
+
+	world.RecursiveSendAllAttributes(u.connection)
+	world.RecursiveSendAllStrings(u.connection)
+	world.RecursiveSendAllTextures(u.connection)
 	wc.MainExtension.InitUser(u)
 
+	log.Info("WorldController: SendWorldData: world data sent")
 	return nil
 }
 
@@ -467,10 +472,6 @@ func (wc *WorldController) Broadcast(websocketMessage *websocket.PreparedMessage
 	wc.users.Broadcast(websocketMessage)
 }
 
-func (wc *WorldController) BroadcastObjects(array []message.ObjectDefinition) {
-	wc.users.Broadcast(wc.msgBuilder.MsgAddStaticObjects(array))
-}
-
 func (wc *WorldController) GetSpacePosition(id uuid.UUID) (cmath.Vec3, error) {
 	if space, ok := wc.spaces.Get(id); ok {
 		return space.position, nil
@@ -509,9 +510,8 @@ func (wc *WorldController) SetSpaceTitle(spaceId uuid.UUID, title string) error 
 		return errors.Errorf("failed to get space: %s", spaceId)
 	}
 	space.Name = title
-	defArray := make([]message.ObjectDefinition, 1)
-	space.filObjDef(&defArray[0])
-	wc.BroadcastObjects(defArray)
+	space.UpdateObjectDef()
+	wc.Broadcast(space.GetObjectDef())
 
 	return nil
 }

@@ -206,7 +206,12 @@ func (u *User) HandleSignals(s posbus.Signal) {
 	switch s {
 	case posbus.SignalReady:
 		log.Debugf("Got signalReady from %s", u.ID.String())
-		go u.connection.EnableWriting()
+		if err := u.world.SendWorldData(u); err != nil {
+			log.Error(errors.WithMessagef(err, "User: HandleSignals: SignalReady: failed to send world data: %s", u.ID))
+			u.world.unregisterUser <- u
+			return
+		}
+		u.connection.EnableWriting()
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	// Momentum
@@ -61,6 +62,7 @@ type Space struct {
 	msgBuilder       *message.Builder
 	stringAttributes map[string]string
 	isStageMode      int32
+	objDefMsg        atomic.Value
 }
 
 func newSpace(spaceStorage space.Storage, msgBuilder *message.Builder) *Space {
@@ -340,11 +342,9 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 
 	// if s.initialized {
 	if isdefchanged {
-		s.world.spawnNeedUpdate.Set(true)
-		log.Debug("send addStaticOBject")
-		defArray := make([]message.ObjectDefinition, 1)
-		s.filObjDef(&defArray[0])
-		s.world.Broadcast(s.msgBuilder.MsgAddStaticObjects(defArray))
+		log.Debug("Space: UpdateMetaFromMap: sending object definition message")
+		s.UpdateObjectDef()
+		s.world.Broadcast(s.GetObjectDef())
 	}
 
 	if len(updatedTextures) > 0 {
@@ -408,8 +408,7 @@ func (s *Space) UpdatePosition(pos cmath.Vec3, theta float64, force bool) error 
 		log.Debugf("udatepos need update from: %v", s.position)
 		s.position = pos
 		s.theta = theta
-
-		s.world.spawnNeedUpdate.Set(true)
+		s.UpdateObjectDef()
 
 		msg := posbus.NewSetStaticObjectPositionMsg()
 		msg.SetPosition(s.id, pos)
@@ -667,7 +666,6 @@ func (s *Space) UpdateChildren() error {
 	// 	os.Exit(0)
 	// }
 	if changed {
-		s.world.spawnNeedUpdate.Set(true)
 		// logger.Logln(4, "New children:", cids)
 		s.children = cids
 		for u := range fixedChildren {
@@ -715,29 +713,33 @@ func (s *Space) UpdateChildren() error {
 // 	s.flatbufObjDef.attributes[i].attribute = v
 // }
 
-func (s *Space) PushObjDef(metaArray []message.ObjectDefinition, i *int) {
-	s.filObjDef(&(metaArray[*i]))
-	*i++
-
-	for id := range s.children {
-		space, ok := s.world.spaces.Get(id)
-		if !ok {
-			log.Errorf("Space: PushObjDef: failed to get space: %s", id)
-			continue
-		}
-		space.PushObjDef(metaArray, i)
-	}
+func (s *Space) UpdateObjectDef() {
+	log.Debugf("Space: UpdateObjectDef: %s", s.id)
+	s.objDefMsg.Store(s.msgBuilder.MsgObjectDefinition(
+		message.ObjectDefinition{
+			ObjectID:         s.id,
+			ParentID:         s.parentId,
+			AssetType:        s.assetId,
+			Name:             s.Name,
+			Position:         s.position,
+			TetheredToParent: true,
+			Minimap:          s.minimap,
+			InfoUI:           s.InfoUI,
+		},
+	))
 }
 
-func (s *Space) filObjDef(metaArray *message.ObjectDefinition) {
-	metaArray.ObjectID = s.id
-	metaArray.ParentID = s.parentId
-	metaArray.AssetType = s.assetId
-	metaArray.Name = s.Name
-	metaArray.Position = s.position
-	metaArray.TetheredToParent = true
-	metaArray.Minimap = s.minimap
-	metaArray.InfoUI = s.InfoUI
+func (s *Space) GetObjectDef() *websocket.PreparedMessage {
+	objDefMsg := utils.GetFromAny[*websocket.PreparedMessage](s.objDefMsg.Load(), nil)
+	if objDefMsg == nil {
+		s.UpdateObjectDef()
+		objDefMsg = utils.GetFromAny[*websocket.PreparedMessage](s.objDefMsg.Load(), nil)
+	}
+	if objDefMsg == nil {
+		log.Errorf("Space: GetObjectDef: empty object defenition message: %s", s.id)
+		return nil
+	}
+	return objDefMsg
 }
 
 func (s *Space) RecursiveSendAllTextures(connection *socket.Connection) {
