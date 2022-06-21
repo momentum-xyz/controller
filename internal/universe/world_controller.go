@@ -317,19 +317,8 @@ func (wc *WorldController) AddUserToWorld(u *User) error {
 	wc.users.Add(u)
 	log.Info("User added to the world")
 
-	if err := func() error {
-		wc.spaces.spaces.Mu.RLock()
-		defer wc.spaces.spaces.Mu.RUnlock()
-
-		for _, space := range wc.spaces.spaces.Data {
-			if err := u.connection.SendDirectly(space.GetObjectDef()); err != nil {
-				return errors.WithMessage(err, "failed to send space object definition")
-			}
-		}
-		log.Info("WorldController: AddUserToWorld: world spaces object definitions sent")
-		return nil
-	}(); err != nil {
-		return err
+	if err := wc.SendSpaceData(wc.ID, u); err != nil {
+		return errors.WithMessage(err, "failed to send space data")
 	}
 
 	if err := u.connection.SendDirectly(
@@ -348,6 +337,22 @@ func (wc *WorldController) AddUserToWorld(u *User) error {
 		return errors.WithMessage(err, "failed to send connection notification message")
 	}
 
+	return nil
+}
+
+func (wc *WorldController) SendSpaceData(spaceID uuid.UUID, u *User) error {
+	space, ok := wc.spaces.Get(spaceID)
+	if !ok {
+		return errors.Errorf("failed to get space: %s", spaceID)
+	}
+	if err := u.connection.SendDirectly(space.GetObjectDef()); err != nil {
+		return errors.WithMessagef(err, "failed to send space object defition: %s", space.id)
+	}
+	for id := range space.children {
+		if err := wc.SendSpaceData(id, u); err != nil {
+			log.Error(errors.WithMessagef(err, "failed to send child object definition: %s", id))
+		}
+	}
 	return nil
 }
 
