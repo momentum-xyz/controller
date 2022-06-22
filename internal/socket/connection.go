@@ -199,8 +199,8 @@ func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
 		return nil
 	}
 
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+	c.mu.Lock()
+	defer c.mu.Unlock()
 
 	if c.closed {
 		return nil
