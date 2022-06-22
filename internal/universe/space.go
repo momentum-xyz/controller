@@ -342,9 +342,7 @@ func (s *Space) UpdateMetaFromMap(entry map[string]interface{}) error {
 	if isdefchanged {
 		s.world.spawnNeedUpdate.Set(true)
 		log.Debug("send addStaticOBject")
-		defArray := make([]message.ObjectDefinition, 1)
-		s.filObjDef(&defArray[0])
-		s.world.Broadcast(s.msgBuilder.MsgAddStaticObjects(defArray))
+		s.world.Broadcast(s.ObjectDefinitionMessage())
 	}
 
 	if len(updatedTextures) > 0 {
@@ -716,7 +714,16 @@ func (s *Space) UpdateChildren() error {
 // }
 
 func (s *Space) PushObjDef(metaArray []message.ObjectDefinition, i *int) {
-	s.filObjDef(&(metaArray[*i]))
+	od := &(metaArray[*i])
+	od.ObjectID = s.id
+	od.ParentID = s.parentId
+	od.AssetType = s.assetId
+	od.Name = s.Name
+	od.Position = s.position
+	od.TetheredToParent = true
+	od.Minimap = s.minimap
+	od.InfoUI = s.InfoUI
+
 	*i++
 
 	for id := range s.children {
@@ -727,17 +734,6 @@ func (s *Space) PushObjDef(metaArray []message.ObjectDefinition, i *int) {
 		}
 		space.PushObjDef(metaArray, i)
 	}
-}
-
-func (s *Space) filObjDef(metaArray *message.ObjectDefinition) {
-	metaArray.ObjectID = s.id
-	metaArray.ParentID = s.parentId
-	metaArray.AssetType = s.assetId
-	metaArray.Name = s.Name
-	metaArray.Position = s.position
-	metaArray.TetheredToParent = true
-	metaArray.Minimap = s.minimap
-	metaArray.InfoUI = s.InfoUI
 }
 
 func (s *Space) RecursiveSendAllTextures(connection *socket.Connection) {
@@ -813,4 +809,19 @@ func (s *Space) GetOnlineUsers() (int64, error) {
 
 	log.Debugf("Online users for spaceId %v: %d", s.id, onlineUsers)
 	return onlineUsers, nil
+}
+
+func (s *Space) ObjectDefinitionMessage() *websocket.PreparedMessage {
+	objDef := message.ObjectDefinition{
+		ObjectID:         s.id,
+		ParentID:         s.parentId,
+		AssetType:        s.assetId,
+		Name:             s.Name,
+		Position:         s.position,
+		TetheredToParent: true,
+		Minimap:          s.minimap,
+		InfoUI:           s.InfoUI,
+	}
+
+	return s.msgBuilder.MsgAddStaticObjects([]message.ObjectDefinition{objDef})
 }

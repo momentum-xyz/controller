@@ -509,9 +509,10 @@ func (wc *WorldController) SetSpaceTitle(spaceId uuid.UUID, title string) error 
 		return errors.Errorf("failed to get space: %s", spaceId)
 	}
 	space.Name = title
-	defArray := make([]message.ObjectDefinition, 1)
+	/*defArray := make([]message.ObjectDefinition, 1)
 	space.filObjDef(&defArray[0])
-	wc.BroadcastObjects(defArray)
+	wc.BroadcastObjects(defArray)*/
+	wc.Broadcast(space.ObjectDefinitionMessage())
 
 	return nil
 }
