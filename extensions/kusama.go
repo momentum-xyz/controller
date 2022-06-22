@@ -127,14 +127,14 @@ type eraEvent struct {
 	ActiveEra           int    `json:"activeEra"`
 	ActiveValidators    int    `json:"activeValidators"`
 	CandidateValidators int    `json:"candidateValidators"`
-	TotalStakeInEra     int    `json:"totalStakeInEra"`
-	LastEraReward       string `json:"lastEraReward"`
+	TotalStakeInEra     int64    `json:"totalStakeInEra"`
+	LastEraReward       int64 `json:"lastEraReward"`
 }
 
 type sessionEvent struct {
 	CurrentSessionIndex    int    `json:"currentSessionIndex"`
 	CurrentEra             int    `json:"currentEra"`
-	TotalRewardPointsInEra string `json:"totalRewardPointsInEra"`
+	TotalRewardPointsInEra int    `json:"totalRewardPointsInEra"`
 	CurrentSlotInSession   int    `json:"currentSlotInSession"`
 	SlotsPerSession        int    `json:"slotsPerSession"`
 	CurrentSlotInEra       int    `json:"currentSlotInEra"`
