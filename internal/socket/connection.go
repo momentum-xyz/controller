@@ -209,6 +209,8 @@ func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
 	if err := c.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 		return errors.WithMessage(err, "failed to set write deadline")
 	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if err := c.conn.WritePreparedMessage(m); err != nil {
 		return errors.WithMessage(err, "failed to write prepared message")
 	}
