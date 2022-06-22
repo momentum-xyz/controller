@@ -72,9 +72,6 @@ func (u *User) Register(wc *WorldController) error {
 	u.pos = (*cmath.Vec3)(unsafe.Add(unsafe.Pointer(&u.posbuf[0]), 16))
 	*u.pos = ipos
 	u.world = wc
-	if err := u.world.UserOnlineAction(u.ID); err != nil {
-		log.Warn(errors.WithMessagef(err, "User: Register: failed to handle user online action: %s", u.ID))
-	}
 	u.lastUpdate = int64(0)
 	u.currentSpace.Store(uuid.Nil)
 
@@ -98,13 +95,16 @@ func (u *User) Register(wc *WorldController) error {
 		return errors.WithMessage(err, "failed to add user to world")
 	}
 	wc.hub.mqtt.SafeSubscribe("user_control/"+wc.ID.String()+"/"+u.ID.String()+"/#", 1, u.MQTTMessageHandler)
+	if err := u.world.UserOnlineAction(u.ID); err != nil {
+		log.Warn(errors.WithMessagef(err, "User: Register: failed to handle user online action: %s", u.ID))
+	}
 	// remove user from delay remove list
 	if val, ok := u.world.hub.usersForRemoveWithDelay.Load(u.ID); ok {
 		val.Value()()
 	}
 	log.Warnf("Registration done for %s(%s) : guest=%+v ", u.name, u.ID.String(), u.isGuest)
 	go func() {
-		time.Sleep(15 * time.Second)
+		time.Sleep(30 * time.Second)
 		u.connection.EnableWriting()
 	}()
 
@@ -206,7 +206,12 @@ func (u *User) HandleSignals(s posbus.Signal) {
 	switch s {
 	case posbus.SignalReady:
 		log.Debugf("Got signalReady from %s", u.ID.String())
-		go u.connection.EnableWriting()
+		if err := u.world.SendWorldData(u); err != nil {
+			log.Error(errors.WithMessagef(err, "User: HandleSignals: SignalReady: failed to send world data: %s", u.ID))
+			u.world.unregisterUser <- u
+			return
+		}
+		u.connection.EnableWriting()
 	}
 }
 
