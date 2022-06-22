@@ -127,7 +127,7 @@ type eraEvent struct {
 	ActiveEra           int    `json:"activeEra"`
 	ActiveValidators    int    `json:"activeValidators"`
 	CandidateValidators int    `json:"candidateValidators"`
-	TotalStakeInEra     string `json:"totalStakeInEra"`
+	TotalStakeInEra     int    `json:"totalStakeInEra"`
 	LastEraReward       string `json:"lastEraReward"`
 }
 
