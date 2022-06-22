@@ -372,8 +372,7 @@ func (ksm *Kusama) GetSpaceNameByID(id uuid.UUID) (string, error) {
 
 func (ksm *Kusama) SpawnBlock(b *KusamaBlock) error {
 	log.Info("Spawn Block")
-	defArray := make([]message.ObjectDefinition, 1)
-	defArray[0] = message.ObjectDefinition{
+	obj := message.ObjectDefinition{
 		ObjectID:         b.id,
 		ParentID:         ksm.RelayChain,
 		AssetType:        ksm.TransactionBlockAsset,
@@ -383,7 +382,7 @@ func (ksm *Kusama) SpawnBlock(b *KusamaBlock) error {
 		Minimap:          0,
 		InfoUI:           ksm.BlockInfoUI,
 	}
-	ksm.world.BroadcastObjects(defArray)
+	ksm.world.Broadcast(ksm.world.GetBuilder().MsgObjectDefinition(obj))
 
 	time.Sleep(time.Millisecond * 300)
 	// fmt.Println("author:", b.author)

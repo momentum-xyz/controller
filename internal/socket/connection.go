@@ -1,7 +1,6 @@
 package socket
 
 import (
-	"github.com/sasha-s/go-deadlock"
 	"time"
 
 	"github.com/momentum-xyz/controller/internal/logger"
@@ -11,6 +10,7 @@ import (
 	"github.com/eapache/queue"
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
+	"github.com/sasha-s/go-deadlock"
 )
 
 const (
@@ -200,11 +200,11 @@ func (c *Connection) SendDirectly(m *websocket.PreparedMessage) error {
 	}
 
 	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	if c.closed {
-		c.mu.RUnlock()
 		return nil
 	}
-	c.mu.RUnlock()
 
 	if err := c.conn.SetWriteDeadline(time.Now().Add(writeWait)); err != nil {
 		return errors.WithMessage(err, "failed to set write deadline")

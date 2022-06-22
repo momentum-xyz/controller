@@ -178,6 +178,31 @@ func (mb *Builder) SerializeGUID(builder *flatbuffers.Builder, uuid uuid.UUID) f
 	return api.CreateID(builder, least, most)
 }
 
+func (mb *Builder) MsgObjectDefinition(obj ObjectDefinition) *websocket.PreparedMessage {
+	builder := mb.GetBuilder()
+	defer func() {
+		mb.ReleaseBuilder(builder)
+		log.Debug("Builder: MsgObjectDefinition")
+	}()
+
+	objName := builder.CreateString(obj.Name)
+
+	api.ObjectDefinitionStart(builder)
+	api.ObjectDefinitionAddObjectId(builder, mb.SerializeGUID(builder, obj.ObjectID))
+	api.ObjectDefinitionAddName(builder, objName)
+	api.ObjectDefinitionAddPosition(builder,
+		api.CreateVec3(builder, obj.Position.X, obj.Position.Y, obj.Position.Z),
+	)
+	api.ObjectDefinitionAddParentId(builder, mb.SerializeGUID(builder, obj.ParentID))
+	api.ObjectDefinitionAddAssetType(builder, mb.SerializeGUID(builder, obj.AssetType))
+	api.ObjectDefinitionAddTetheredToParent(builder, obj.TetheredToParent)
+	api.ObjectDefinitionAddMinimap(builder, obj.Minimap != 0)
+	api.ObjectDefinitionAddInfouiType(builder, mb.SerializeGUID(builder, obj.InfoUI))
+	msgOffset := api.ObjectDefinitionEnd(builder)
+
+	return mb.FinishMessage(builder, api.MsgObjectDefinition, msgOffset)
+}
+
 func (mb *Builder) MsgAddStaticObjects(objects []ObjectDefinition) *websocket.PreparedMessage {
 	builder := mb.GetBuilder()
 	defer func() {
