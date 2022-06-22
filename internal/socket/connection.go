@@ -1,7 +1,6 @@
 package socket
 
 import (
-	"github.com/sasha-s/go-deadlock"
 	"time"
 
 	"github.com/momentum-xyz/controller/internal/logger"
@@ -11,6 +10,7 @@ import (
 	"github.com/eapache/queue"
 	"github.com/gorilla/websocket"
 	"github.com/pkg/errors"
+	"github.com/sasha-s/go-deadlock"
 )
 
 const (
