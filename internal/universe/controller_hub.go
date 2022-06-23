@@ -248,7 +248,7 @@ func (ch *ControllerHub) WriteInfluxPoint(point *influx_write.Point) error {
 func (ch *ControllerHub) UpdateTotalUsers() {
 	tag := ch.node.name + " // " + ch.node.id.String()
 	for range time.Tick(time.Minute) {
-		numUsers, err := ch.UserStorage.SelectUserCount()
+		numUsers, err := ch.UserStorage.GetUserCount()
 		if err != nil {
 			log.Warn(errors.WithMessage(err, "ControllerHub: UpdateTotalUsers: failed to get users count"))
 			continue

@@ -9,6 +9,7 @@ import (
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
+	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
@@ -173,6 +174,7 @@ func (u *User) UserOfflineAction() error {
 	if err := u.world.hub.WorldStorage.RemoveUserDynamicMembership(u.ID); err != nil {
 		log.Warn(errors.WithMessagef(err, "User: UserOfflineAction: failed to remove user dynamic membership: %s", u.ID))
 	}
+	u.world.DisableStageModeWithDelay(u.ID, utils.GetFromAny(u.currentSpace.Load(), uuid.Nil), defaultDelayForDisableStageMode)
 	if u.isGuest {
 		u.world.hub.RemoveUserWithDelay(u.ID, defaultDelayForUsersForRemove)
 	}

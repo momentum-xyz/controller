@@ -8,13 +8,15 @@ import (
 )
 
 const (
-	selectUserCountQuery = `SELECT count(*) FROM users;`
-	getUserNameQuery     = `SELECT name FROM users WHERE id = ?;`
+	getUserCountQuery = `SELECT count(*) FROM users;`
+	getUserNameQuery  = `SELECT name FROM users WHERE id = ?;`
+	getUserIDsQuery   = `SELECT id FROM users;`
 )
 
 type Storage interface {
 	GetUserName(id uuid.UUID) (string, error)
-	SelectUserCount() (int, error)
+	GetUserCount() (int, error)
+	GetUserIDs() ([]uuid.UUID, error)
 }
 
 type storage struct {
@@ -27,8 +29,32 @@ func NewStorage(db sqlx.DB) Storage {
 	}
 }
 
-func (s *storage) SelectUserCount() (int, error) {
-	rows, err := s.db.Query(selectUserCountQuery)
+func (s *storage) GetUserIDs() ([]uuid.UUID, error) {
+	rows, err := s.db.Query(getUserIDsQuery)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to query db")
+	}
+	//noinspection GoUnhandledErrorResult
+	defer rows.Close()
+
+	bid := make([]byte, 16)
+	ids := make([]uuid.UUID, 0)
+	for rows.Next() {
+		if err := rows.Scan(&bid); err != nil {
+			return nil, errors.WithMessage(err, "failed to scan rows")
+		}
+		id, err := uuid.FromBytes(bid)
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed to parse id")
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
+func (s *storage) GetUserCount() (int, error) {
+	rows, err := s.db.Query(getUserCountQuery)
 	if err != nil {
 		return 0, errors.WithMessage(err, "failed to query db")
 	}

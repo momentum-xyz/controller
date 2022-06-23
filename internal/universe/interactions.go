@@ -2,8 +2,11 @@ package universe
 
 import (
 	"encoding/json"
-	"github.com/google/uuid"
+
+	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
+
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -24,6 +27,13 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		}
 		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger entered space: failed to update online by space id"))
+		}
+		key := space.UserSpace{
+			UserID:  u.ID,
+			SpaceID: targetUUID,
+		}
+		if val, ok := u.world.disableStageModeWithDelay.Load(key); ok {
+			val.Value()()
 		}
 		go func() {
 			if err := u.UpdateUsersOnSpace(targetUUID); err != nil {
