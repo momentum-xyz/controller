@@ -5,8 +5,6 @@
 package universe
 
 import (
-	// STD
-	"context"
 	"encoding/json"
 	_ "net/http/pprof"
 	"strconv"
@@ -16,7 +14,6 @@ import (
 	"github.com/momentum-xyz/controller/extensions"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/extension"
-	"github.com/momentum-xyz/controller/internal/space"
 	"github.com/momentum-xyz/controller/internal/spacetype"
 	"github.com/momentum-xyz/controller/internal/storage"
 	"github.com/momentum-xyz/controller/pkg/cmath"
@@ -45,8 +42,6 @@ type RegRequest struct {
 	theta float64
 	// rotation math.Vec3
 }
-
-const defaultDelayForDisableStageMode = 5 * time.Minute
 
 // Make sure that WorldController is extension.WorldController - DO NOT REMOVE
 var _ extension.WorldController = (*WorldController)(nil)
@@ -77,12 +72,11 @@ type WorldController struct {
 	// Unregister requests from users.
 	unregisterUser chan *User
 
-	AdditionalExtensions      map[string]extension.Extension
-	MainExtension             extension.Extension
-	EffectsEmitter            uuid.UUID
-	Config                    config.World
-	msgBuilder                *message.Builder
-	disableStageModeWithDelay *utils.SyncMap[space.UserSpace, utils.Unique[context.CancelFunc]]
+	AdditionalExtensions map[string]extension.Extension
+	MainExtension        extension.Extension
+	EffectsEmitter       uuid.UUID
+	Config               config.World
+	msgBuilder           *message.Builder
 }
 
 func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *message.Builder) (*WorldController, error) {
@@ -92,17 +86,16 @@ func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *messa
 	}
 
 	controller := WorldController{
-		ID:                        worldID,
-		registerUser:              make(chan *User, 96),
-		unregisterUser:            make(chan *User, 96),
-		influxtag:                 hub.node.name + ":" + wName + " // " + hub.node.id.String() + ":" + worldID.String(),
-		hub:                       hub,
-		msgBuilder:                msgBuilder,
-		spaceTypes:                spacetype.NewSpaceTypes(hub.SpaceStorage),
-		registerSpace:             make(chan *RegRequest, 1024),
-		unregisterSpace:           make(chan uuid.UUID, 1024),
-		updateSpace:               make(chan uuid.UUID, 1024),
-		disableStageModeWithDelay: utils.NewSyncMap[space.UserSpace, utils.Unique[context.CancelFunc]](),
+		ID:              worldID,
+		registerUser:    make(chan *User, 96),
+		unregisterUser:  make(chan *User, 96),
+		influxtag:       hub.node.name + ":" + wName + " // " + hub.node.id.String() + ":" + worldID.String(),
+		hub:             hub,
+		msgBuilder:      msgBuilder,
+		spaceTypes:      spacetype.NewSpaceTypes(hub.SpaceStorage),
+		registerSpace:   make(chan *RegRequest, 1024),
+		unregisterSpace: make(chan uuid.UUID, 1024),
+		updateSpace:     make(chan uuid.UUID, 1024),
 	}
 	controller.users = NewUsers(&controller)
 	controller.spaces = newSpaces(&controller, hub.SpaceStorage, msgBuilder)
@@ -112,10 +105,6 @@ func newWorldController(worldID uuid.UUID, hub *ControllerHub, msgBuilder *messa
 	go utils.ChanMonitor("world.registerSpace", controller.registerSpace, 3*time.Second)
 	go utils.ChanMonitor("world.unregisterSpace", controller.unregisterSpace, 3*time.Second)
 	go utils.ChanMonitor("world.updateSpace", controller.updateSpace, 3*time.Second)
-
-	if err := controller.DisableStageModeForAllWithDelay(); err != nil {
-		return nil, errors.WithMessage(err, "failed to disable stage mode for all with delay")
-	}
 
 	if err := controller.UpdateMeta(); err != nil {
 		return nil, errors.WithMessage(err, "failed to update meta")
@@ -134,54 +123,6 @@ type WowMetadata struct {
 	UserId  []string `json:"UserId"`
 	WowType string   `json:"type"` // +1 -1
 	Count   int      `json:"count"`
-}
-
-func (wc *WorldController) DisableStageModeForAllWithDelay() error {
-	usersSpaces, err := wc.hub.SpaceStorage.GetStageModeUsersSpaces()
-	if err != nil {
-		return errors.WithMessage(err, "failed to get stage mode users spaces")
-	}
-	for i := range usersSpaces {
-		wc.DisableStageModeWithDelay(usersSpaces[i].UserID, usersSpaces[i].SpaceID, defaultDelayForDisableStageMode)
-	}
-	return nil
-}
-
-func (wc *WorldController) DisableStageModeWithDelay(userID, spaceID uuid.UUID, delay time.Duration) {
-	key := space.UserSpace{
-		UserID:  userID,
-		SpaceID: spaceID,
-	}
-
-	wc.disableStageModeWithDelay.Mu.Lock()
-	val, ok := wc.disableStageModeWithDelay.Data[key]
-	if ok {
-		val.Value()()
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), delay)
-	val = utils.NewUnique(cancel)
-	wc.disableStageModeWithDelay.Data[key] = val
-	wc.disableStageModeWithDelay.Mu.Unlock()
-
-	go func() {
-		defer func() {
-			wc.disableStageModeWithDelay.Mu.Lock()
-			defer wc.disableStageModeWithDelay.Mu.Unlock()
-
-			if val1, ok := wc.disableStageModeWithDelay.Data[key]; ok && val1.Equals(val) {
-				delete(wc.disableStageModeWithDelay.Data, key)
-			}
-		}()
-
-		select {
-		case <-ctx.Done():
-			if err := wc.hub.SpaceStorage.DisableStageModeForUserInSpace(userID, spaceID); err != nil {
-				log.Warn(errors.WithMessagef(err, "WorldController: DisableStageModeWithDelay: failed to disable stage mode for user %s in space %s", userID, spaceID))
-			}
-			log.Debugf("WorldController: DisableStageModeWithDelay: stage mode disabled for user %s in space %s", userID, spaceID)
-		}
-	}()
 }
 
 func (wc *WorldController) LoadExtensions() error {
@@ -320,13 +261,6 @@ func (wc *WorldController) UpdateVibesBySpaceId(spaceId uuid.UUID) (int64, error
 	)
 
 	return vibesCount, nil
-}
-
-func (wc *WorldController) UserOnlineAction(id uuid.UUID) error {
-	if err := wc.InsertOnline(id); err != nil {
-		return errors.WithMessage(err, "failed to insert online")
-	}
-	return wc.InsertWorldDynamicMembership(id)
 }
 
 func (wc *WorldController) InsertOnline(id uuid.UUID) error {

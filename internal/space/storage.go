@@ -18,6 +18,8 @@ const (
 	selectChildrenByParentIdQuery        = `SELECT spaces.id,spaces.visible,space_types.visible,spaces.position FROM spaces JOIN space_types WHERE space_types.id = spaces.spaceTypeId AND spaces.parentId =?;`
 	selectSpaceAttributesById            = `SELECT a.name, flag, value FROM space_attributes INNER JOIN attributes a WHERE a.id = space_attributes.attributeId AND spaceId = ?;`
 	selectChildrenEntriesByParentIDQuery = `SELECT spaces.*,s.visible AS st_visible FROM spaces JOIN space_types s WHERE s.id = spaces.spaceTypeId AND parentId =?;`
+	selectOnlineSpaceIDsQuery            = `SELECT DISTINCT spaceId FROM online_users;`
+	selectCheckOnlineSpaceByIDQuery      = `SELECT EXISTS(SELECT 1 FROM online_users WHERE spaceId = ? LIMIT 1);`
 	selectStageModeUsersSpacesQuery      = `SELECT userId, spaceId FROM space_integration_users
 											WHERE flag = 1
 											AND integrationTypeId = (SELECT id
@@ -44,6 +46,8 @@ type Storage interface {
 	QuerySpaceAttributesById(id uuid.UUID) ([]spaceAttribute, error)
 	GetStageModeUsersSpaces() ([]UserSpace, error)
 	DisableStageModeForUserInSpace(userID, spaceID uuid.UUID) error
+	GetOnlineSpaceIDs() ([]uuid.UUID, error)
+	CheckOnlineSpaceByID(id uuid.UUID) (bool, error)
 }
 
 type UserSpace struct {
@@ -61,6 +65,47 @@ func NewStorage(db sqlx.DB) Storage {
 
 type storage struct {
 	db sqlx.DB
+}
+
+func (s *storage) CheckOnlineSpaceByID(id uuid.UUID) (bool, error) {
+	row, err := s.db.Query(selectCheckOnlineSpaceByIDQuery, utils.BinId(id))
+	if err != nil {
+		return false, errors.WithMessage(err, "failed to query db")
+	}
+	row.Close()
+
+	if row.Next() {
+		var exists int64
+		if err := row.Scan(&exists); err != nil {
+			return false, errors.WithMessage(err, "failed to scan row")
+		}
+		return exists == 1, nil
+	}
+
+	return false, utils.ErrNotFound
+}
+
+func (s *storage) GetOnlineSpaceIDs() ([]uuid.UUID, error) {
+	rows, err := s.db.Query(selectOnlineSpaceIDsQuery)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to query db")
+	}
+	defer rows.Close()
+
+	bid := make([]byte, 16)
+	ids := make([]uuid.UUID, 0)
+	for rows.Next() {
+		if err := rows.Scan(&bid); err != nil {
+			return nil, errors.WithMessage(err, "failed to scan rows")
+		}
+		id, err := uuid.FromBytes(bid)
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed to parse id")
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, nil
 }
 
 func (s *storage) GetStageModeUsersSpaces() ([]UserSpace, error) {
