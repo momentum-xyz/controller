@@ -171,6 +171,7 @@ func (ch *ControllerHub) CleanupSpacesWithDelay() error {
 
 func (ch *ControllerHub) CleanupSpaceWithDelay(id uuid.UUID, fn utils.TimerFunc[uuid.UUID]) {
 	ch.spacesForCleanup.Set(id, spacesCleanupDelay, func(id uuid.UUID) error {
+		log.Infof("ControllerHub: CleanupSpaceWithDelay: %s", id)
 		ch.mqtt.SafePublish("clean_up/space", 0, true, utils.BinId(id))
 		return fn(id)
 	})
@@ -193,6 +194,7 @@ func (ch *ControllerHub) CleanupUsersWithDelay() error {
 
 func (ch *ControllerHub) CleanupUserWithDelay(id uuid.UUID, fn utils.TimerFunc[uuid.UUID]) {
 	ch.usersForCleanup.Set(id, usersCleanupDelay, func(id uuid.UUID) error {
+		log.Infof("ControllerHub: CleanupUserWithDelay: %s", id)
 		ch.mqtt.SafePublish("clean_up/user", 0, true, utils.BinId(id))
 		return fn(id)
 	})

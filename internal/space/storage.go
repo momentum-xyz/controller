@@ -68,21 +68,17 @@ type storage struct {
 }
 
 func (s *storage) CheckOnlineSpaceByID(id uuid.UUID) (bool, error) {
-	row, err := s.db.Query(selectCheckOnlineSpaceByIDQuery, utils.BinId(id))
-	if err != nil {
-		return false, errors.WithMessage(err, "failed to query db")
-	}
-	row.Close()
-
-	if row.Next() {
-		var exists int64
-		if err := row.Scan(&exists); err != nil {
-			return false, errors.WithMessage(err, "failed to scan row")
-		}
-		return exists == 1, nil
+	row := s.db.QueryRow(selectCheckOnlineSpaceByIDQuery, utils.BinId(id))
+	if row.Err() != nil {
+		return false, errors.WithMessage(row.Err(), "failed to query db")
 	}
 
-	return false, utils.ErrNotFound
+	var exists int64
+	if err := row.Scan(&exists); err != nil {
+		return false, errors.WithMessage(err, "failed to scan row")
+	}
+
+	return exists == 1, nil
 }
 
 func (s *storage) GetOnlineSpaceIDs() ([]uuid.UUID, error) {
