@@ -33,6 +33,12 @@ type SuccessfulHandshakeData struct {
 	URL        *url.URL
 }
 
+type HandshakeData struct {
+	conn         *websocket.Conn
+	claims       *jwt.MapClaims
+	handshakeObj *api.Handshake
+}
+
 var upgrader = websocket.Upgrader{
 	CheckOrigin: func(r *http.Request) bool {
 		return true
@@ -109,21 +115,21 @@ func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
 	}()
 	log.Info("Handshake Start")
 
-	conn, claims, ok, handshakeObj := n.PreHandShake(w, r)
+	hsData, ok := n.PreHandShake(w, r)
 	if !ok {
 		// log.Error("error: wrong PreHandShake, aborting connection")
 		return
 	}
 
-	userID := message.DeserializeGUID(handshakeObj.UserId(nil))
-	sessionID := message.DeserializeGUID(handshakeObj.SessionId(nil))
-	URL, _ := url.Parse(string(handshakeObj.Url()))
+	userID := message.DeserializeGUID(hsData.handshakeObj.UserId(nil))
+	sessionID := message.DeserializeGUID(hsData.handshakeObj.SessionId(nil))
+	URL, _ := url.Parse(string(hsData.handshakeObj.Url()))
 	log.Info("URL to use:", URL)
 
-	userIDclaim, _ := uuid.Parse(utils.GetFromAnyMap(*claims, "sub", ""))
+	userIDclaim, _ := uuid.Parse(utils.GetFromAnyMap(*hsData.claims, "sub", ""))
 
 	if (userID == userIDclaim) || (userIDclaim.String() == "69e1d7f6-3130-4005-9969-31edf9af9445") || (userIDclaim.String() == "eb50bbc8-ba4e-46a3-a480-a9b30141ce91") {
-		connection := socket.NewConnection(conn)
+		connection := socket.NewConnection(hsData.conn)
 
 		log.Info("Add to HS chain")
 		n.HandshakeChan <- &SuccessfulHandshakeData{
@@ -138,31 +144,29 @@ func (n *Networking) HandShake(w http.ResponseWriter, r *http.Request) {
 }
 
 // PreHandShake TODO: it's "god" method needs to be simplified // antst: agree :)
-func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Request) (
-	*websocket.Conn, *jwt.MapClaims, bool, *api.Handshake,
-) {
+func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Request) (*HandshakeData, bool) {
 	socketConnection, err := upgrader.Upgrade(response, request, nil)
 	if err != nil {
 		log.Error(errors.WithMessage(err, "error: socket upgrade error, aborting connection"))
-		return nil, nil, false, nil
+		return nil, false
 	}
 
 	mt, incomingMessage, err := socketConnection.ReadMessage()
 	if err != nil || mt != websocket.BinaryMessage {
 		log.Error(errors.WithMessagef(err, "error: wrong PreHandShake (1), aborting connection"))
-		return nil, nil, false, nil
+		return nil, false
 	}
 
 	msg := posbus.MsgFromBytes(incomingMessage)
 	if msg.Type() != posbus.MsgTypeFlatBufferMessage {
 		log.Error("error: wrong message received, not Handshake.")
-		return nil, nil, false, nil
+		return nil, false
 	}
 	msgObj := posbus.MsgFromBytes(incomingMessage).AsFlatBufferMessage()
 	msgType := msgObj.MsgType()
 	if msgType != api.MsgHandshake {
 		log.Error("error: wrong message type received, not Handshake.")
-		return nil, nil, false, nil
+		return nil, false
 	}
 
 	var handshake *api.Handshake
@@ -183,7 +187,7 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 		log.Errorf("error: wrong PreHandShake (invalid token: %s), aborting connection: %s", userID, err)
 		socketConnection.SetWriteDeadline(time.Now().Add(10 * time.Second))
 		socketConnection.WritePreparedMessage(posbus.NewSignalMsg(posbus.SignalInvalidToken).WebsocketMessage())
-		return nil, nil, false, nil
+		return nil, false
 	}
 
 	parsed, _ := jwt.Parse(
@@ -194,5 +198,9 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 
 	claims := parsed.Claims.(jwt.MapClaims)
 
-	return socketConnection, &claims, true, handshake
+	return &HandshakeData{
+		conn:         socketConnection,
+		claims:       &claims,
+		handshakeObj: handshake,
+	}, true
 }
