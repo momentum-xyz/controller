@@ -1,6 +1,7 @@
 package universe
 
 import (
+	"github.com/momentum-xyz/controller/utils"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -153,6 +154,17 @@ func (u *User) OfflineAction() error {
 		}
 		return nil
 	})
+
+	spaceID := utils.GetFromAny(u.currentSpace.Load(), uuid.Nil)
+	if spaceID == uuid.Nil {
+		return nil
+	}
+	if ok, err := hub.SpaceStorage.CheckOnlineSpaceByID(spaceID); err != nil {
+		return errors.WithMessagef(err, "failed to check online space by id: %s, %s", u.ID, spaceID)
+	} else if !ok {
+		hub.CleanupSpaceWithDelay(spaceID, utils.EmptyTimerFunc[uuid.UUID])
+	}
+
 	return nil
 }
 
