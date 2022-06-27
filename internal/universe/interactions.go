@@ -2,7 +2,6 @@ package universe
 
 import (
 	"encoding/json"
-	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	"github.com/google/uuid"
@@ -45,7 +44,9 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		if ok, err := u.world.hub.SpaceStorage.CheckOnlineSpaceByID(targetUUID); err != nil {
 			log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to check online space by id"))
 		} else if !ok {
-			u.world.hub.CleanupSpaceWithDelay(targetUUID, utils.EmptyTimerFunc[uuid.UUID])
+			if err := u.world.hub.CleanupSpace(targetUUID); err != nil {
+				log.Warn(errors.WithMessage(err, "InteractionHandler: trigger left space: failed to cleanup space"))
+			}
 		}
 		go func() {
 			if err := u.UpdateUsersOnSpace(targetUUID); err != nil {

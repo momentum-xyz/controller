@@ -152,18 +152,21 @@ func (u *User) OfflineAction() error {
 		if err := hub.WorldStorage.RemoveUserDynamicMembership(id); err != nil {
 			return errors.WithMessagef(err, "failed to remove user dynamic membership: %s, %s", id, u.world.GetID())
 		}
-		return nil
+		return hub.CleanupUser(id)
 	})
 
 	spaceID := utils.GetFromAny(u.currentSpace.Load(), uuid.Nil)
 	if spaceID == uuid.Nil {
 		return nil
 	}
-	if ok, err := hub.SpaceStorage.CheckOnlineSpaceByID(spaceID); err != nil {
-		return errors.WithMessagef(err, "failed to check online space by id: %s, %s", u.ID, spaceID)
-	} else if !ok {
-		hub.CleanupSpaceWithDelay(spaceID, utils.EmptyTimerFunc[uuid.UUID])
-	}
+	hub.CleanupSpaceWithDelay(spaceID, func(id uuid.UUID) error {
+		if ok, err := hub.SpaceStorage.CheckOnlineSpaceByID(spaceID); err != nil {
+			return errors.WithMessagef(err, "failed to check online space by id: %s, %s", u.ID, spaceID)
+		} else if !ok {
+			return hub.CleanupSpace(spaceID)
+		}
+		return nil
+	})
 
 	return nil
 }

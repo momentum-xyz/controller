@@ -9,10 +9,6 @@ import (
 
 type TimerFunc[T comparable] func(key T) error
 
-func EmptyTimerFunc[T comparable](key T) error {
-	return nil
-}
-
 type TimerSet[T comparable] struct {
 	timers *SyncMap[T, Unique[context.CancelFunc]]
 }

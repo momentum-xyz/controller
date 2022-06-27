@@ -164,17 +164,19 @@ func (ch *ControllerHub) CleanupSpacesWithDelay() error {
 		return errors.WithMessage(err, "failed to get online space ids")
 	}
 	for i := range spaces {
-		ch.CleanupSpaceWithDelay(spaces[i], utils.EmptyTimerFunc[uuid.UUID])
+		ch.CleanupSpaceWithDelay(spaces[i], ch.CleanupSpace)
 	}
 	return nil
 }
 
 func (ch *ControllerHub) CleanupSpaceWithDelay(id uuid.UUID, fn utils.TimerFunc[uuid.UUID]) {
-	ch.spacesForCleanup.Set(id, spacesCleanupDelay, func(id uuid.UUID) error {
-		log.Infof("ControllerHub: CleanupSpaceWithDelay: %s", id)
-		ch.mqtt.SafePublish("clean_up/space", 0, true, utils.BinId(id))
-		return fn(id)
-	})
+	ch.spacesForCleanup.Set(id, spacesCleanupDelay, fn)
+}
+
+func (ch *ControllerHub) CleanupSpace(id uuid.UUID) error {
+	log.Infof("ControllerHub: CleanupSpace: %s", id)
+	ch.mqtt.SafePublish("clean_up/space", 0, true, utils.BinId(id))
+	return nil
 }
 
 func (ch *ControllerHub) CancelCleanupSpace(id uuid.UUID) {
@@ -187,17 +189,19 @@ func (ch *ControllerHub) CleanupUsersWithDelay() error {
 		return errors.WithMessage(err, "failed to get online user ids")
 	}
 	for i := range users {
-		ch.CleanupUserWithDelay(users[i], utils.EmptyTimerFunc[uuid.UUID])
+		ch.CleanupUserWithDelay(users[i], ch.CleanupUser)
 	}
 	return nil
 }
 
 func (ch *ControllerHub) CleanupUserWithDelay(id uuid.UUID, fn utils.TimerFunc[uuid.UUID]) {
-	ch.usersForCleanup.Set(id, usersCleanupDelay, func(id uuid.UUID) error {
-		log.Infof("ControllerHub: CleanupUserWithDelay: %s", id)
-		ch.mqtt.SafePublish("clean_up/user", 0, true, utils.BinId(id))
-		return fn(id)
-	})
+	ch.usersForCleanup.Set(id, usersCleanupDelay, fn)
+}
+
+func (ch *ControllerHub) CleanupUser(id uuid.UUID) error {
+	log.Infof("ControllerHub: CleanupUser: %s", id)
+	ch.mqtt.SafePublish("clean_up/user", 0, true, utils.BinId(id))
+	return nil
 }
 
 func (ch *ControllerHub) CancelCleanupUser(id uuid.UUID) {
