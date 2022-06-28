@@ -5,10 +5,7 @@
 package universe
 
 import (
-	// STD
 	"encoding/json"
-	"github.com/momentum-xyz/posbus-protocol/posbus"
-	"github.com/pkg/errors"
 	_ "net/http/pprof"
 	"strconv"
 	"time"
@@ -22,11 +19,13 @@ import (
 	"github.com/momentum-xyz/controller/pkg/cmath"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
+	"github.com/momentum-xyz/posbus-protocol/posbus"
 
 	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
+	"github.com/pkg/errors"
 )
 
 type WorldMeta struct {
@@ -124,11 +123,6 @@ type WowMetadata struct {
 	UserId  []string `json:"UserId"`
 	WowType string   `json:"type"` // +1 -1
 	Count   int      `json:"count"`
-}
-
-type StageModeSetMetadata struct {
-	StageModeStatus string   `json:"stageModeStatus"`
-	Users           []string `json:"ConnectedUsers"`
 }
 
 func (wc *WorldController) LoadExtensions() error {
@@ -267,13 +261,6 @@ func (wc *WorldController) UpdateVibesBySpaceId(spaceId uuid.UUID) (int64, error
 	)
 
 	return vibesCount, nil
-}
-
-func (wc *WorldController) UserOnlineAction(id uuid.UUID) error {
-	if err := wc.InsertOnline(id); err != nil {
-		return errors.WithMessage(err, "failed to insert online")
-	}
-	return wc.InsertWorldDynamicMembership(id)
 }
 
 func (wc *WorldController) InsertOnline(id uuid.UUID) error {

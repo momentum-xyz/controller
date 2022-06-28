@@ -375,7 +375,7 @@ func (DB *Database) GetUsersIDsByType(typeid uuid.UUID) ([]uuid.UUID, error) {
 	defer rows.Close()
 
 	bid := make([]byte, 16)
-	var ids []uuid.UUID
+	ids := make([]uuid.UUID, 0)
 	for rows.Next() {
 		if err := rows.Scan(&bid); err != nil {
 			return nil, errors.WithMessage(err, "failed to scan rows")
