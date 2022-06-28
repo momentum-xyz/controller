@@ -113,11 +113,15 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 	if err != nil {
 		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get user name"))
 	}
+	tname, err := u.world.hub.UserStorage.GetUserName(targetUUID)
+	if err != nil {
+		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get target name"))
+	}
 
 	msg := map[string]interface{}{
 		"senderId":   u.ID.String(),
 		"receiverId": targetUUID.String(),
-		"message":    uname + " has high-fived you!",
+		"message":    uname,
 	}
 	data, err := json.Marshal(&msg)
 	if err != nil {
@@ -131,7 +135,7 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 
 	u.connection.Send(
 		posbus.NewSimpleNotificationMsg(
-			posbus.DestinationReact, posbus.NotificationTextMessage, 0, "High five sent!",
+			posbus.DestinationReact, posbus.NotificationTextMessage, 0, tname,
 		).WebsocketMessage(),
 	)
 
