@@ -21,6 +21,8 @@ func NewTimerSet[T comparable]() *TimerSet[T] {
 
 func (t *TimerSet[T]) Set(key T, delay time.Duration, fn TimerFunc[T]) {
 	t.timers.Mu.Lock()
+	defer t.timers.Mu.Unlock()
+
 	stopFn, ok := t.timers.Data[key]
 	if ok {
 		stopFn.Value()()
@@ -29,10 +31,11 @@ func (t *TimerSet[T]) Set(key T, delay time.Duration, fn TimerFunc[T]) {
 	ctx, cancel := context.WithTimeout(context.Background(), delay)
 	stopFn = NewUnique(cancel)
 	t.timers.Data[key] = stopFn
-	t.timers.Mu.Unlock()
 
 	go func() {
 		defer func() {
+			cancel()
+
 			t.timers.Mu.Lock()
 			defer t.timers.Mu.Unlock()
 
@@ -43,8 +46,10 @@ func (t *TimerSet[T]) Set(key T, delay time.Duration, fn TimerFunc[T]) {
 
 		select {
 		case <-ctx.Done():
-			if err := fn(key); err != nil {
-				log.Warn(errors.WithMessagef(err, "TimerSet: Set: function call failed: %+v", key))
+			if ctx.Err() == context.DeadlineExceeded {
+				if err := fn(key); err != nil {
+					log.Warn(errors.WithMessagef(err, "TimerSet: Set: function call failed: %+v", key))
+				}
 			}
 		}
 	}()
@@ -57,5 +62,4 @@ func (t *TimerSet[T]) Stop(key T) {
 	if stopFn, ok := t.timers.Data[key]; ok {
 		stopFn.Value()()
 	}
-	delete(t.timers.Data, key)
 }
