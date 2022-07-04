@@ -175,7 +175,7 @@ func (ch *ControllerHub) CleanupSpaceWithDelay(id uuid.UUID, fn utils.TimerFunc[
 
 func (ch *ControllerHub) CleanupSpace(id uuid.UUID) error {
 	log.Infof("ControllerHub: CleanupSpace: %s", id)
-	ch.mqtt.SafePublish("clean_up/space", 0, true, utils.BinId(id))
+	ch.mqtt.SafePublish("clean_up/space", 0, false, utils.BinId(id))
 	return nil
 }
 
@@ -200,7 +200,7 @@ func (ch *ControllerHub) CleanupUserWithDelay(id uuid.UUID, fn utils.TimerFunc[u
 
 func (ch *ControllerHub) CleanupUser(id uuid.UUID) error {
 	log.Infof("ControllerHub: CleanupUser: %s", id)
-	ch.mqtt.SafePublish("clean_up/user", 0, true, utils.BinId(id))
+	ch.mqtt.SafePublish("clean_up/user", 0, false, utils.BinId(id))
 	return nil
 }
 
