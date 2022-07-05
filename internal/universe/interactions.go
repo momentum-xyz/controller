@@ -109,6 +109,7 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 	if err := u.world.hub.DB.UpdateHighFives(u.ID, targetUUID); err != nil {
 		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to update high fives"))
 	}
+
 	uname, err := u.world.hub.UserStorage.GetUserName(u.ID)
 	if err != nil {
 		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get user name"))
@@ -118,16 +119,20 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get target name"))
 	}
 
-	msg := map[string]interface{}{
-		"senderId":   u.ID.String(),
-		"receiverId": targetUUID.String(),
-		"message":    uname,
+	msg := struct {
+		SenderID   string `json:"senderId"`
+		ReceiverID string `json:"receiverId"`
+		Message    string `json:"message"`
+	}{
+		SenderID:   u.ID.String(),
+		ReceiverID: targetUUID.String(),
+		Message:    uname,
 	}
+
 	data, err := json.Marshal(&msg)
 	if err != nil {
 		return errors.WithMessage(err, "failed to marshal data")
 	}
-
 	target.connection.Send(
 		posbus.NewRelayToReactMsg("high5", data).
 			WebsocketMessage(),
@@ -135,7 +140,7 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 
 	u.connection.Send(
 		posbus.NewSimpleNotificationMsg(
-			posbus.DestinationReact, posbus.NotificationTextMessage, 0, tname,
+			posbus.DestinationReact, posbus.NotificationHighFive, 0, tname,
 		).WebsocketMessage(),
 	)
 
