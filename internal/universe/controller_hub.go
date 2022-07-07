@@ -30,8 +30,9 @@ import (
 )
 
 const (
-	defaultDelayForUsersForRemove = 5 * time.Minute
-	defaultInfluxDBTimeout        = 2 * time.Second
+	usersCleanupDelay  = 3 * time.Minute
+	spacesCleanupDelay = 4 * time.Minute
+	influxDBTimeout    = 2 * time.Second
 )
 
 const (
@@ -47,20 +48,21 @@ type node struct {
 }
 
 type ControllerHub struct {
-	cfg                     *config.Config
-	Worlds                  *utils.SyncMap[uuid.UUID, *WorldController]
-	node                    node
-	mu                      deadlock.RWMutex
-	DB                      *storage.Database
-	SpaceStorage            space.Storage
-	WorldStorage            world.Storage
-	UserStorage             user.Storage
-	net                     *net.Networking
-	influx                  influx_api.WriteAPIBlocking
-	mqtt                    safemqtt.Client
-	msgBuilder              *message.Builder
-	guestUserTypeId         uuid.UUID
-	usersForRemoveWithDelay *utils.SyncMap[uuid.UUID, utils.Unique[context.CancelFunc]]
+	cfg              *config.Config
+	Worlds           *utils.SyncMap[uuid.UUID, *WorldController]
+	node             node
+	mu               deadlock.RWMutex
+	DB               *storage.Database
+	SpaceStorage     space.Storage
+	WorldStorage     world.Storage
+	UserStorage      user.Storage
+	net              *net.Networking
+	influx           influx_api.WriteAPIBlocking
+	mqtt             safemqtt.Client
+	msgBuilder       *message.Builder
+	guestUserTypeId  uuid.UUID
+	usersForCleanup  *utils.TimerSet[uuid.UUID]
+	spacesForCleanup *utils.TimerSet[uuid.UUID]
 }
 
 func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder *message.Builder) (*ControllerHub, error) {
@@ -80,17 +82,18 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	influxClient := influx_db2.NewClient(cfg.Influx.URL, cfg.Influx.TOKEN)
 
 	hub := &ControllerHub{
-		cfg:                     cfg,
-		Worlds:                  utils.NewSyncMap[uuid.UUID, *WorldController](),
-		DB:                      db,
-		SpaceStorage:            space.NewStorage(*db.DB),
-		WorldStorage:            world.NewStorage(*db.DB),
-		UserStorage:             user.NewStorage(*db.DB),
-		net:                     networking,
-		influx:                  influxClient.WriteAPIBlocking(cfg.Influx.ORG, cfg.Influx.BUCKET),
-		mqtt:                    mqttClient,
-		msgBuilder:              msgBuilder,
-		usersForRemoveWithDelay: utils.NewSyncMap[uuid.UUID, utils.Unique[context.CancelFunc]](),
+		cfg:              cfg,
+		Worlds:           utils.NewSyncMap[uuid.UUID, *WorldController](),
+		DB:               db,
+		SpaceStorage:     space.NewStorage(*db.DB),
+		WorldStorage:     world.NewStorage(*db.DB),
+		UserStorage:      user.NewStorage(*db.DB),
+		net:              networking,
+		influx:           influxClient.WriteAPIBlocking(cfg.Influx.ORG, cfg.Influx.BUCKET),
+		mqtt:             mqttClient,
+		msgBuilder:       msgBuilder,
+		usersForCleanup:  utils.NewTimerSet[uuid.UUID](),
+		spacesForCleanup: utils.NewTimerSet[uuid.UUID](),
 	}
 
 	deadlock.Opts.DeadlockTimeout = time.Second * 60
@@ -100,11 +103,14 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	if err := hub.GetNodeSettings(); err != nil {
 		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to get node settings"))
 	}
-	if err := hub.SanitizeOnlineUsers(); err != nil {
-		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to sanitize online users"))
+	if err := hub.CleanupUsersWithDelay(); err != nil {
+		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to cleanup users with delay"))
 	}
-	if err := hub.RemoveGuestsWithDelay(); err != nil {
-		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to remove guests with delay"))
+	if err := hub.CleanupSpacesWithDelay(); err != nil {
+		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to cleanup spaces with delay"))
+	}
+	if err := hub.CleanupOnlineUsers(); err != nil {
+		log.Warn(errors.WithMessage(err, "NewControllerHub: failed to cleanup online users"))
 	}
 
 	worlds, err := hub.WorldStorage.GetWorlds()
@@ -121,8 +127,8 @@ func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder
 	return hub, nil
 }
 
-func (ch *ControllerHub) SanitizeOnlineUsers() error {
-	log.Info("Sanitizing online users")
+func (ch *ControllerHub) CleanupOnlineUsers() error {
+	log.Info("Cleanup online users")
 	if err := ch.DB.RemoveAllOnlineUsers(); err != nil {
 		return errors.WithMessage(err, "failed to remove all online users")
 	}
@@ -152,50 +158,54 @@ func (ch *ControllerHub) SanitizeOnlineUsers() error {
 	// return err
 }
 
-func (ch *ControllerHub) RemoveGuestsWithDelay() error {
-	guests, err := ch.DB.GetUsersIDsByType(ch.guestUserTypeId)
+func (ch *ControllerHub) CleanupSpacesWithDelay() error {
+	spaces, err := ch.SpaceStorage.GetOnlineSpaceIDs()
 	if err != nil {
-		return errors.WithMessage(err, "failed to get guests")
+		return errors.WithMessage(err, "failed to get online space ids")
 	}
-	for i := range guests {
-		ch.RemoveUserWithDelay(guests[i], defaultDelayForUsersForRemove)
+	for i := range spaces {
+		ch.CleanupSpaceWithDelay(spaces[i], ch.CleanupSpace)
 	}
 	return nil
 }
 
-func (ch *ControllerHub) RemoveUserWithDelay(id uuid.UUID, delay time.Duration) {
-	ch.usersForRemoveWithDelay.Mu.Lock()
-	val, ok := ch.usersForRemoveWithDelay.Data[id]
-	if ok {
-		val.Value()()
+func (ch *ControllerHub) CleanupSpaceWithDelay(id uuid.UUID, fn utils.TimerFunc[uuid.UUID]) {
+	ch.spacesForCleanup.Set(id, spacesCleanupDelay, fn)
+}
+
+func (ch *ControllerHub) CleanupSpace(id uuid.UUID) error {
+	log.Infof("ControllerHub: CleanupSpace: %s", id)
+	ch.mqtt.SafePublish("clean_up/space", 0, false, utils.BinId(id))
+	return nil
+}
+
+func (ch *ControllerHub) CancelCleanupSpace(id uuid.UUID) {
+	ch.spacesForCleanup.Stop(id)
+}
+
+func (ch *ControllerHub) CleanupUsersWithDelay() error {
+	users, err := ch.UserStorage.GetOnlineUserIDs()
+	if err != nil {
+		return errors.WithMessage(err, "failed to get online user ids")
 	}
+	for i := range users {
+		ch.CleanupUserWithDelay(users[i], ch.CleanupUser)
+	}
+	return nil
+}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	val = utils.NewUnique(cancel)
-	ch.usersForRemoveWithDelay.Data[id] = val
-	ch.usersForRemoveWithDelay.Mu.Unlock()
+func (ch *ControllerHub) CleanupUserWithDelay(id uuid.UUID, fn utils.TimerFunc[uuid.UUID]) {
+	ch.usersForCleanup.Set(id, usersCleanupDelay, fn)
+}
 
-	go func() {
-		defer func() {
-			ch.usersForRemoveWithDelay.Mu.Lock()
-			defer ch.usersForRemoveWithDelay.Mu.Unlock()
+func (ch *ControllerHub) CleanupUser(id uuid.UUID) error {
+	log.Infof("ControllerHub: CleanupUser: %s", id)
+	ch.mqtt.SafePublish("clean_up/user", 0, false, utils.BinId(id))
+	return nil
+}
 
-			if val1, ok := ch.usersForRemoveWithDelay.Data[id]; ok && val1.Equals(val) {
-				delete(ch.usersForRemoveWithDelay.Data, id)
-			}
-		}()
-
-		dt := time.NewTimer(delay)
-		select {
-		case <-dt.C:
-			if err := ch.DB.RemoveFromUsers(id); err != nil {
-				log.Warn(errors.WithMessage(err, "ControllerHub: RemoveUserWithDelay: failed to remove from db"))
-			}
-			log.Debug("ControllerHub: RemoveUserWithDelay: user removed: %s", id.String())
-		case <-ctx.Done():
-			dt.Stop()
-		}
-	}()
+func (ch *ControllerHub) CancelCleanupUser(id uuid.UUID) {
+	ch.usersForCleanup.Stop(id)
 }
 
 func (ch *ControllerHub) ChangeHandler(client mqtt.Client, message mqtt.Message) error {
@@ -235,7 +245,7 @@ func (ch *ControllerHub) NetworkRunner() {
 }
 
 func (ch *ControllerHub) WriteInfluxPoint(point *influx_write.Point) error {
-	ctx, cancel := context.WithTimeout(context.Background(), defaultInfluxDBTimeout)
+	ctx, cancel := context.WithTimeout(context.Background(), influxDBTimeout)
 	defer func() {
 		cancel()
 		log.Warn("ControllerHub: WriteInfluxPoint: stat sent")
@@ -248,7 +258,7 @@ func (ch *ControllerHub) WriteInfluxPoint(point *influx_write.Point) error {
 func (ch *ControllerHub) UpdateTotalUsers() {
 	tag := ch.node.name + " // " + ch.node.id.String()
 	for range time.Tick(time.Minute) {
-		numUsers, err := ch.UserStorage.SelectUserCount()
+		numUsers, err := ch.UserStorage.GetUserCount()
 		if err != nil {
 			log.Warn(errors.WithMessage(err, "ControllerHub: UpdateTotalUsers: failed to get users count"))
 			continue

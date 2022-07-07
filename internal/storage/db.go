@@ -32,7 +32,7 @@ const (
 	removeManyFromUsersQuery                        = `DELETE FROM users WHERE id IN(?);`
 	removeAllOnlineUsersQuery                       = `TRUNCATE online_users;`
 	removeAllDynamicMembershipQuery                 = `TRUNCATE user_spaces_dynamic;`
-	getUserLastKnownPositionQuery                   = `SELECT spaceId,x,y,z FROM user_lkp WHERE  userId = ? AND worldId = ?;`
+	getUserLastKnownPositionQuery                   = `SELECT spaceId,x,y,z FROM user_lkp WHERE userId = ? AND worldId = ?;`
 	getWorldDefaultSpawnPositionQuery               = `SELECT SpawnSpace,SpawnDislocation FROM world_definition WHERE id = ?;`
 	getGuestUserTypeIDQuery                         = `SELECT id FROM user_types WHERE name = ?;`
 	getUserIDsByTypeQuery                           = `SELECT id FROM users WHERE userTypeId = ?;`
@@ -375,7 +375,7 @@ func (DB *Database) GetUsersIDsByType(typeid uuid.UUID) ([]uuid.UUID, error) {
 	defer rows.Close()
 
 	bid := make([]byte, 16)
-	var ids []uuid.UUID
+	ids := make([]uuid.UUID, 0)
 	for rows.Next() {
 		if err := rows.Scan(&bid); err != nil {
 			return nil, errors.WithMessage(err, "failed to scan rows")

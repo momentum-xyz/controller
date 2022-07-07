@@ -2,8 +2,9 @@ package universe
 
 import (
 	"encoding/json"
-	"github.com/google/uuid"
 	"github.com/momentum-xyz/posbus-protocol/posbus"
+
+	"github.com/google/uuid"
 	"github.com/pkg/errors"
 )
 
@@ -25,6 +26,7 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
 			log.Warn(errors.WithMessage(err, "InteractionHandler: trigger entered space: failed to update online by space id"))
 		}
+		u.world.hub.CancelCleanupSpace(targetUUID)
 		go func() {
 			if err := u.UpdateUsersOnSpace(targetUUID); err != nil {
 				log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger entered space: failed to update users on space: %s", targetUUID))
@@ -38,6 +40,13 @@ func (u *User) InteractionHandler(m *posbus.TriggerInteraction) {
 		}
 		if _, err := u.world.UpdateOnlineBySpaceId(targetUUID); err != nil {
 			log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to update online by space id"))
+		}
+		if ok, err := u.world.hub.SpaceStorage.CheckOnlineSpaceByID(targetUUID); err != nil {
+			log.Warn(errors.WithMessagef(err, "InteractionHandler: trigger left space: failed to check online space by id"))
+		} else if !ok {
+			if err := u.world.hub.CleanupSpace(targetUUID); err != nil {
+				log.Warn(errors.WithMessage(err, "InteractionHandler: trigger left space: failed to cleanup space"))
+			}
 		}
 		go func() {
 			if err := u.UpdateUsersOnSpace(targetUUID); err != nil {
@@ -100,21 +109,30 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 	if err := u.world.hub.DB.UpdateHighFives(u.ID, targetUUID); err != nil {
 		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to update high fives"))
 	}
+
 	uname, err := u.world.hub.UserStorage.GetUserName(u.ID)
 	if err != nil {
 		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get user name"))
 	}
-
-	msg := map[string]interface{}{
-		"senderId":   u.ID.String(),
-		"receiverId": targetUUID.String(),
-		"message":    uname + " has high-fived you!",
+	tname, err := u.world.hub.UserStorage.GetUserName(targetUUID)
+	if err != nil {
+		log.Warn(errors.WithMessage(err, "User: HandleHighFive: failed to get target name"))
 	}
+
+	msg := struct {
+		SenderID   string `json:"senderId"`
+		ReceiverID string `json:"receiverId"`
+		Message    string `json:"message"`
+	}{
+		SenderID:   u.ID.String(),
+		ReceiverID: targetUUID.String(),
+		Message:    uname,
+	}
+
 	data, err := json.Marshal(&msg)
 	if err != nil {
 		return errors.WithMessage(err, "failed to marshal data")
 	}
-
 	target.connection.Send(
 		posbus.NewRelayToReactMsg("high5", data).
 			WebsocketMessage(),
@@ -122,7 +140,7 @@ func (u *User) HandleHighFive(m *posbus.TriggerInteraction) error {
 
 	u.connection.Send(
 		posbus.NewSimpleNotificationMsg(
-			posbus.DestinationReact, posbus.NotificationTextMessage, 0, "High five sent!",
+			posbus.DestinationReact, posbus.NotificationHighFive, 0, tname,
 		).WebsocketMessage(),
 	)
 

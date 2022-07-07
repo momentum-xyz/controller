@@ -18,6 +18,22 @@ const (
 	selectChildrenByParentIdQuery        = `SELECT spaces.id,spaces.visible,space_types.visible,spaces.position FROM spaces JOIN space_types WHERE space_types.id = spaces.spaceTypeId AND spaces.parentId =?;`
 	selectSpaceAttributesById            = `SELECT a.name, flag, value FROM space_attributes INNER JOIN attributes a WHERE a.id = space_attributes.attributeId AND spaceId = ?;`
 	selectChildrenEntriesByParentIDQuery = `SELECT spaces.*,s.visible AS st_visible FROM spaces JOIN space_types s WHERE s.id = spaces.spaceTypeId AND parentId =?;`
+	selectOnlineSpaceIDsQuery            = `SELECT DISTINCT spaceId FROM online_users;`
+	selectCheckOnlineSpaceByIDQuery      = `SELECT EXISTS(SELECT 1 FROM online_users WHERE spaceId = ? LIMIT 1);`
+	selectStageModeUsersSpacesQuery      = `SELECT userId, spaceId FROM space_integration_users
+											WHERE flag = 1
+											AND integrationTypeId = (SELECT id
+																		FROM integration_types
+																		WHERE name = 'stage_mode'
+																		LIMIT 1);`
+	disableStageModeForUserInSpaceQuery = `UPDATE space_integration_users
+											SET flag = 0
+											WHERE userId = ?
+											AND spaceId = ?
+											AND integrationTypeId = (SELECT id
+																		FROM integration_types
+																		WHERE name = 'stage_mode'
+																		LIMIT 1);`
 )
 
 type Storage interface {
@@ -28,6 +44,15 @@ type Storage interface {
 	SelectChildrenSpacesByParentId(id []byte) ([]childrenSpace, error)
 	SelectChildrenEntriesByParentId(id []byte) (map[uuid.UUID]map[string]interface{}, error)
 	QuerySpaceAttributesById(id uuid.UUID) ([]spaceAttribute, error)
+	GetStageModeUsersSpaces() ([]UserSpace, error)
+	DisableStageModeForUserInSpace(userID, spaceID uuid.UUID) error
+	GetOnlineSpaceIDs() ([]uuid.UUID, error)
+	CheckOnlineSpaceByID(id uuid.UUID) (bool, error)
+}
+
+type UserSpace struct {
+	UserID  uuid.UUID
+	SpaceID uuid.UUID
 }
 
 var log = logger.L()
@@ -40,6 +65,89 @@ func NewStorage(db sqlx.DB) Storage {
 
 type storage struct {
 	db sqlx.DB
+}
+
+func (s *storage) CheckOnlineSpaceByID(id uuid.UUID) (bool, error) {
+	row := s.db.QueryRow(selectCheckOnlineSpaceByIDQuery, utils.BinId(id))
+	if row.Err() != nil {
+		return false, errors.WithMessage(row.Err(), "failed to query db")
+	}
+
+	var exists int64
+	if err := row.Scan(&exists); err != nil {
+		return false, errors.WithMessage(err, "failed to scan row")
+	}
+
+	return exists == 1, nil
+}
+
+func (s *storage) GetOnlineSpaceIDs() ([]uuid.UUID, error) {
+	rows, err := s.db.Query(selectOnlineSpaceIDsQuery)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to query db")
+	}
+	defer rows.Close()
+
+	bid := make([]byte, 16)
+	ids := make([]uuid.UUID, 0)
+	for rows.Next() {
+		if err := rows.Scan(&bid); err != nil {
+			return nil, errors.WithMessage(err, "failed to scan rows")
+		}
+		id, err := uuid.FromBytes(bid)
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed to parse id")
+		}
+		ids = append(ids, id)
+	}
+
+	return ids, nil
+}
+
+func (s *storage) GetStageModeUsersSpaces() ([]UserSpace, error) {
+	rows, err := s.db.Query(selectStageModeUsersSpacesQuery)
+	if err != nil {
+		return nil, errors.WithMessage(err, "failed to query db")
+	}
+	defer rows.Close()
+
+	ubid := make([]byte, 16)
+	sbid := make([]byte, 16)
+	res := make([]UserSpace, 0)
+	for rows.Next() {
+		if err := rows.Scan(&ubid, &sbid); err != nil {
+			return nil, errors.WithMessage(err, "failed to scan rows")
+		}
+		uid, err := uuid.FromBytes(ubid)
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed to parse user id")
+		}
+		sid, err := uuid.FromBytes(sbid)
+		if err != nil {
+			return nil, errors.WithMessage(err, "failed to parse space id")
+		}
+		res = append(res, UserSpace{
+			UserID: uid, SpaceID: sid,
+		})
+	}
+
+	return res, nil
+}
+
+func (s *storage) DisableStageModeForUserInSpace(userID, spaceID uuid.UUID) error {
+	res, err := s.db.Exec(disableStageModeForUserInSpaceQuery, utils.BinId(userID), utils.BinId(spaceID))
+	if err != nil {
+		return errors.WithMessage(err, "failed to exec db")
+	}
+
+	var affected int64
+	affected, err = res.RowsAffected()
+	if err != nil {
+		return nil
+	}
+
+	log.Debugf("Space storage: DisableStageModeForUserInSpace: %s, %s, %d", userID, spaceID, affected)
+	return nil
 }
 
 func (s *storage) QuerySpaceAttributesById(id uuid.UUID) ([]spaceAttribute, error) {

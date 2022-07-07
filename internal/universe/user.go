@@ -1,6 +1,7 @@
 package universe
 
 import (
+	"github.com/momentum-xyz/controller/utils"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -95,12 +96,8 @@ func (u *User) Register(wc *WorldController) error {
 		return errors.WithMessage(err, "failed to add user to world")
 	}
 	wc.hub.mqtt.SafeSubscribe("user_control/"+wc.ID.String()+"/"+u.ID.String()+"/#", 1, u.MQTTMessageHandler)
-	if err := u.world.UserOnlineAction(u.ID); err != nil {
-		log.Warn(errors.WithMessagef(err, "User: Register: failed to handle user online action: %s", u.ID))
-	}
-	// remove user from delay remove list
-	if val, ok := u.world.hub.usersForRemoveWithDelay.Load(u.ID); ok {
-		val.Value()()
+	if err := u.OnlineAction(); err != nil {
+		log.Warn(errors.WithMessagef(err, "User: Register: failed to handle online action: %s", u.ID))
 	}
 	log.Warnf("Registration done for %s(%s) : guest=%+v ", u.name, u.ID.String(), u.isGuest)
 	go func() {
@@ -128,13 +125,49 @@ func (u *User) Unregister(h *WorldController) error {
 			}
 		}
 		// remove from online_users in DB
-		if err := u.UserOfflineAction(); err != nil {
+		if err := u.OfflineAction(); err != nil {
 			log.Warn(errors.WithMessage(err, "User: Unregister: failed to handle offline action"))
 		}
 		// close connection
 		u.connection.Close()
 		h.users.UserLeft(u.ID)
 	}
+	return nil
+}
+
+func (u *User) OnlineAction() error {
+	u.world.hub.CancelCleanupUser(u.ID)
+	if err := u.world.InsertOnline(u.ID); err != nil {
+		return errors.WithMessage(err, "failed to insert online")
+	}
+	return u.world.InsertWorldDynamicMembership(u.ID)
+}
+
+func (u *User) OfflineAction() error {
+	hub := u.world.hub
+	hub.CleanupUserWithDelay(u.ID, func(id uuid.UUID) error {
+		if err := hub.WorldStorage.RemoveWorldOnlineUser(id, u.world.GetID()); err != nil {
+			return errors.WithMessagef(err, "failed to remove world online user: %s, %s", id, u.world.GetID())
+		}
+		if err := hub.WorldStorage.RemoveUserDynamicMembership(id); err != nil {
+			return errors.WithMessagef(err, "failed to remove user dynamic membership: %s, %s", id, u.world.GetID())
+		}
+		return hub.CleanupUser(id)
+	})
+
+	spaceID := utils.GetFromAny(u.currentSpace.Load(), uuid.Nil)
+	if spaceID == uuid.Nil {
+		return nil
+	}
+	hub.CleanupSpaceWithDelay(spaceID, func(id uuid.UUID) error {
+		if ok, err := hub.SpaceStorage.CheckOnlineSpaceByID(spaceID); err != nil {
+			return errors.WithMessagef(err, "failed to check online space by id: %s, %s", u.ID, spaceID)
+		} else if !ok {
+			return hub.CleanupSpace(spaceID)
+		}
+		return nil
+	})
+
 	return nil
 }
 
@@ -163,20 +196,6 @@ func (u *User) MQTTMessageHandler(_ mqtt.Client, msg mqtt.Message) {
 			).WebsocketMessage(),
 		)
 	}
-}
-
-func (u *User) UserOfflineAction() error {
-	log.Info("User: UserOfflineAction:", u.ID.String())
-	if err := u.world.hub.WorldStorage.RemoveWorldOnlineUser(u.ID, u.world.GetID()); err != nil {
-		log.Warn(errors.WithMessagef(err, "User: UserOfflineAction: failed to remove world online user: %s, %s", u.ID, u.world.GetID()))
-	}
-	if err := u.world.hub.WorldStorage.RemoveUserDynamicMembership(u.ID); err != nil {
-		log.Warn(errors.WithMessagef(err, "User: UserOfflineAction: failed to remove user dynamic membership: %s", u.ID))
-	}
-	if u.isGuest {
-		u.world.hub.RemoveUserWithDelay(u.ID, defaultDelayForUsersForRemove)
-	}
-	return nil
 }
 
 func (u *User) OnMessage(msg *posbus.Message) {

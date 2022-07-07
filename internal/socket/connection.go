@@ -53,12 +53,12 @@ func OnPumpEndStub() {
 
 func (c *Connection) Close() {
 	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if c.closed {
-		c.mu.Unlock()
 		return
 	}
 	c.closed = true
-	c.mu.Unlock()
 
 	log.Info("Connection: closing connection and chan")
 	close(c.send)
