@@ -30,8 +30,8 @@ import (
 )
 
 const (
-	usersCleanupDelay  = 4 * time.Minute
-	spacesCleanupDelay = 5 * time.Minute
+	usersCleanupDelay  = 3 * time.Minute
+	spacesCleanupDelay = 4 * time.Minute
 	influxDBTimeout    = 2 * time.Second
 )
 
