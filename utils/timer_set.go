@@ -56,10 +56,7 @@ func (t *TimerSet[T]) Set(key T, delay time.Duration, fn TimerFunc[T]) {
 }
 
 func (t *TimerSet[T]) Stop(key T) {
-	t.timers.Mu.Lock()
-	defer t.timers.Mu.Unlock()
-
-	if stopFn, ok := t.timers.Data[key]; ok {
+	if stopFn, ok := t.timers.Load(key); ok {
 		stopFn.Value()()
 	}
 }
