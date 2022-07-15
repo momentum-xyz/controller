@@ -130,7 +130,6 @@ func (u *User) Unregister(h *WorldController) error {
 		}
 		// close connection
 		u.connection.Close()
-		h.users.UserLeft(u.ID)
 	}
 	return nil
 }
@@ -146,6 +145,7 @@ func (u *User) OnlineAction() error {
 func (u *User) OfflineAction() error {
 	hub := u.world.hub
 	hub.CleanupUserWithDelay(u.ID, func(id uuid.UUID) error {
+		u.world.users.UserLeft(u.ID)
 		if err := hub.WorldStorage.RemoveWorldOnlineUser(id, u.world.GetID()); err != nil {
 			return errors.WithMessagef(err, "failed to remove world online user: %s, %s", id, u.world.GetID())
 		}
