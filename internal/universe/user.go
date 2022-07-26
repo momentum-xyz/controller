@@ -45,7 +45,7 @@ func (u *User) Register(wc *WorldController) error {
 		} else {
 			log.Info("Double-login detected for", u.ID)
 
-			u.connection.Send(posbus.NewSignalMsg(posbus.SignalDualConnection).WebsocketMessage())
+			exclient.connection.Send(posbus.NewSignalMsg(posbus.SignalDualConnection).WebsocketMessage())
 
 			time.Sleep(time.Millisecond * 300)
 			wc.unregisterUser <- exclient
