@@ -31,7 +31,7 @@ var log = logger.L()
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(errors.WithMessage(err, "failed to run service"))
+		log.Fatal(errors.WithMessage(err, "Failed to run service"))
 	}
 }
 

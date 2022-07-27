@@ -1,6 +1,8 @@
 package net
 
 import (
+	"github.com/jmoiron/sqlx"
+
 	// Std
 	"encoding/json"
 	"fmt"
@@ -33,6 +35,15 @@ type SuccessfulHandshakeData struct {
 	URL        *url.URL
 }
 
+type HealthStatus struct {
+	Status string `json:"status"`
+}
+
+type ReadyStatus struct {
+	Database   string `json:"database"`
+	MessageBus string `json:"messageBus"`
+}
+
 type HandshakeData struct {
 	conn         *websocket.Conn
 	claims       *jwt.MapClaims
@@ -51,6 +62,7 @@ type Networking struct {
 }
 
 var log = logger.L()
+var db *sqlx.DB
 
 func NewNetworking(cfg *config.Config) *Networking {
 	n := &Networking{
@@ -61,9 +73,34 @@ func NewNetworking(cfg *config.Config) *Networking {
 	go utils.ChanMonitor("HS chan", n.HandshakeChan, 3*time.Second)
 
 	http.HandleFunc("/posbus", n.HandShake)
+	http.HandleFunc("/health", HealthCheck)
+	http.HandleFunc("/ready", ReadyCheck)
 	http.HandleFunc("/config/ui-client", n.cfgUIClient)
 
 	return n
+}
+
+func HealthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	jsonStatus := HealthStatus{Status: "OK"}
+	err := json.NewEncoder(w).Encode(jsonStatus)
+	if err != nil {
+		return
+	}
+}
+
+func ReadyCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	pingErr := db.Ping()
+	if pingErr != nil {
+		log.Fatal(pingErr)
+		w.WriteHeader(http.StatusBadRequest)
+		jsonStatus := ReadyStatus{Database: "FAIL"}
+		json.NewEncoder(w).Encode(jsonStatus)
+	}
 }
 
 func (n *Networking) ListenAndServe(address, port string) error {
