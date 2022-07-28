@@ -48,6 +48,7 @@ var upgrader = websocket.Upgrader{
 type Networking struct {
 	HandshakeChan chan *SuccessfulHandshakeData
 	cfg           *config.Config
+	tokenVerifier auth.TokenVerifier
 }
 
 var log = logger.L()
@@ -56,6 +57,7 @@ func NewNetworking(cfg *config.Config) *Networking {
 	n := &Networking{
 		HandshakeChan: make(chan *SuccessfulHandshakeData, 20),
 		cfg:           cfg,
+		tokenVerifier: auth.NewTokenVerifier(cfg.Common.IntrospectURL),
 	}
 
 	go utils.ChanMonitor("HS chan", n.HandshakeChan, 3*time.Second)
@@ -182,7 +184,7 @@ func (n *Networking) PreHandShake(response http.ResponseWriter, request *http.Re
 
 	token := string(handshake.UserToken())
 
-	if err := auth.VerifyToken(token, n.cfg.Common.IntrospectURL); err != nil {
+	if err := n.tokenVerifier.Verify(token); err != nil {
 		userID := message.DeserializeGUID(handshake.UserId(nil))
 		log.Errorf("error: wrong PreHandShake (invalid token: %s), aborting connection: %s", userID, err)
 		socketConnection.SetWriteDeadline(time.Now().Add(10 * time.Second))

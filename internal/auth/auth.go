@@ -1,32 +1,24 @@
 package auth
 
 import (
-	// Std
-	"bytes"
-	"encoding/json"
+	"context"
 	"net/http"
 
 	"github.com/pkg/errors"
 )
 
+// VerifyToken deprecated
 func VerifyToken(token string, introspectUrl string) error {
-	type introPayload struct {
-		Token string `json:"token"`
-	}
 	client := &http.Client{}
-	bearer := "Bearer " + token
 
-	payload := introPayload{Token: token}
-	payloadBody, err := json.Marshal(payload)
-	if err != nil {
-		return errors.WithMessage(err, "failed to marshal payload")
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), verifierTimeout)
+	defer cancel()
 
-	req, err := http.NewRequest("POST", introspectUrl, bytes.NewBuffer(payloadBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, introspectUrl, nil)
 	if err != nil {
 		return errors.WithMessage(err, "failed to create request")
 	}
-	req.Header.Add("Authorization", bearer)
+	req.Header.Add("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
@@ -39,11 +31,6 @@ func VerifyToken(token string, introspectUrl string) error {
 		return errors.Errorf("invalid status code: %s", resp.Status)
 	}
 
-	ret := make([]byte, resp.ContentLength)
-	resp.Body.Read(ret)
-	if string(ret) != "1" {
-		return errors.Errorf("invalid ret: %s", ret)
-	}
-
+	// if we have 200, we should be good to go
 	return nil
 }
