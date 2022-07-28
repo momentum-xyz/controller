@@ -2,6 +2,7 @@ package universe
 
 import (
 	"context"
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"net/url"
 	"time"
 
@@ -19,12 +20,11 @@ import (
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 
-	// External
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/google/uuid"
 	influx_db2 "github.com/influxdata/influxdb-client-go/v2"
 	influx_api "github.com/influxdata/influxdb-client-go/v2/api"
 	influx_write "github.com/influxdata/influxdb-client-go/v2/api/write"
+	// External
 	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
 )
@@ -65,20 +65,7 @@ type ControllerHub struct {
 	spacesForCleanup *utils.TimerSet[uuid.UUID]
 }
 
-func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder *message.Builder) (*ControllerHub, error) {
-	db, err := storage.OpenDB(&cfg.MySQL)
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed to init storage")
-	}
-	if err := storage.MigrateDb(db, &cfg.MySQL); err != nil {
-		return nil, errors.WithMessage(err, "failed to migrate db")
-	}
-
-	mqttClient, err := safemqtt.InitMQTTClient(&cfg.MQTT, "worlds_controller-"+uuid.NewString())
-	if err != nil {
-		return nil, errors.WithMessage(err, "failed to init mqtt client")
-	}
-
+func NewControllerHub(cfg *config.Config, networking *net.Networking, msgBuilder *message.Builder, db *storage.Database, mqttClient safemqtt.Client) (*ControllerHub, error) {
 	influxClient := influx_db2.NewClient(cfg.Influx.URL, cfg.Influx.TOKEN)
 
 	hub := &ControllerHub{
