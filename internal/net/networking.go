@@ -91,6 +91,7 @@ func HealthCheck(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -105,15 +106,15 @@ func (n *Networking) ReadyCheck(w http.ResponseWriter, r *http.Request) {
 	pingErr := n.db.Ping()
 	mqttOK := n.mqtt.IsConnected()
 
-	if !mqttOK {
+	if !mqttOK && pingErr != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonStatus = ReadyStatus{Database: "FAIL", MessageBus: "FAIL"}
+	} else if !mqttOK {
 		w.WriteHeader(http.StatusBadRequest)
 		jsonStatus = ReadyStatus{Database: "OK", MessageBus: "FAIL"}
 	} else if pingErr != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		jsonStatus = ReadyStatus{Database: "FAIL", MessageBus: "OK"}
-	} else if !mqttOK && pingErr != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		jsonStatus = ReadyStatus{Database: "FAIL", MessageBus: "FAIL"}
 	} else {
 		jsonStatus = ReadyStatus{Database: "OK", MessageBus: "OK"}
 	}
@@ -122,6 +123,7 @@ func (n *Networking) ReadyCheck(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))
+		return
 	}
 
 	w.WriteHeader(http.StatusOK)
