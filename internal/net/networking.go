@@ -4,7 +4,6 @@ import (
 	// Std
 	"encoding/json"
 	"fmt"
-	safemqtt "github.com/momentum-xyz/controller/internal/mqtt"
 	"net/http"
 	"net/url"
 	"time"
@@ -13,6 +12,7 @@ import (
 	"github.com/momentum-xyz/controller/internal/auth"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/logger"
+	safemqtt "github.com/momentum-xyz/controller/internal/mqtt"
 	"github.com/momentum-xyz/controller/internal/socket"
 	"github.com/momentum-xyz/controller/internal/storage"
 	"github.com/momentum-xyz/controller/pkg/message"
@@ -119,7 +119,6 @@ func (n *Networking) ReadyCheck(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data, err := json.Marshal(&jsonStatus)
-
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))

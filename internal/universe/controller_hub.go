@@ -2,7 +2,6 @@ package universe
 
 import (
 	"context"
-	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"net/url"
 	"time"
 
@@ -24,7 +23,9 @@ import (
 	influx_db2 "github.com/influxdata/influxdb-client-go/v2"
 	influx_api "github.com/influxdata/influxdb-client-go/v2/api"
 	influx_write "github.com/influxdata/influxdb-client-go/v2/api/write"
+	
 	// External
+	mqtt "github.com/eclipse/paho.mqtt.golang"
 	"github.com/pkg/errors"
 	"github.com/sasha-s/go-deadlock"
 )

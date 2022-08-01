@@ -2,7 +2,6 @@ package main
 
 import (
 	"github.com/google/uuid"
-	safemqtt "github.com/momentum-xyz/controller/internal/mqtt"
 	// Std
 	"runtime"
 	"strconv"
@@ -12,6 +11,7 @@ import (
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
+	safemqtt "github.com/momentum-xyz/controller/internal/mqtt"
 	"github.com/momentum-xyz/controller/internal/net"
 	"github.com/momentum-xyz/controller/internal/storage"
 	"github.com/momentum-xyz/controller/internal/universe"
@@ -34,7 +34,7 @@ var log = logger.L()
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatal(errors.WithMessage(err, "Failed to run service"))
+		log.Fatal(errors.WithMessage(err, "failed to run service"))
 	}
 }
 

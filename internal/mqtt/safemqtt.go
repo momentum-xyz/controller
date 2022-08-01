@@ -86,5 +86,8 @@ func (m *mqttClient) SafeUnsubscribe(topics ...string) mqtt.Token {
 }
 
 func (m *mqttClient) IsConnected() bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
 	return m.mqtt.IsConnected()
 }
