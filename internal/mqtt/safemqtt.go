@@ -20,6 +20,7 @@ type Client interface {
 	SafePublish(topic string, qos byte, retained bool, payload interface{}) mqtt.Token
 	SafeSubscribe(topic string, qos byte, callback mqtt.MessageHandler) mqtt.Token
 	SafeUnsubscribe(topics ...string) mqtt.Token
+	IsConnected() bool
 }
 
 type mqttClient struct {
@@ -82,4 +83,11 @@ func (m *mqttClient) SafeUnsubscribe(topics ...string) mqtt.Token {
 	defer m.mutex.Unlock()
 
 	return m.mqtt.Unsubscribe(topics...)
+}
+
+func (m *mqttClient) IsConnected() bool {
+	m.mutex.Lock()
+	defer m.mutex.Unlock()
+
+	return m.mqtt.IsConnected()
 }

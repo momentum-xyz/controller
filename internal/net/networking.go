@@ -12,7 +12,9 @@ import (
 	"github.com/momentum-xyz/controller/internal/auth"
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/logger"
+	safemqtt "github.com/momentum-xyz/controller/internal/mqtt"
 	"github.com/momentum-xyz/controller/internal/socket"
+	"github.com/momentum-xyz/controller/internal/storage"
 	"github.com/momentum-xyz/controller/pkg/message"
 	"github.com/momentum-xyz/controller/utils"
 	"github.com/momentum-xyz/posbus-protocol/flatbuff/go/api"
@@ -33,6 +35,15 @@ type SuccessfulHandshakeData struct {
 	URL        *url.URL
 }
 
+type HealthStatus struct {
+	Status string `json:"status"`
+}
+
+type ReadyStatus struct {
+	Database   string `json:"database"`
+	MessageBus string `json:"messageBus"`
+}
+
 type HandshakeData struct {
 	conn         *websocket.Conn
 	claims       *jwt.MapClaims
@@ -48,22 +59,75 @@ var upgrader = websocket.Upgrader{
 type Networking struct {
 	HandshakeChan chan *SuccessfulHandshakeData
 	cfg           *config.Config
+	db            *storage.Database
+	mqtt          safemqtt.Client
 }
 
 var log = logger.L()
 
-func NewNetworking(cfg *config.Config) *Networking {
+func NewNetworking(cfg *config.Config, db *storage.Database, mqtt safemqtt.Client) *Networking {
 	n := &Networking{
 		HandshakeChan: make(chan *SuccessfulHandshakeData, 20),
 		cfg:           cfg,
+		db:            db,
+		mqtt:          mqtt,
 	}
 
 	go utils.ChanMonitor("HS chan", n.HandshakeChan, 3*time.Second)
 
 	http.HandleFunc("/posbus", n.HandShake)
+	http.HandleFunc("/health", HealthCheck)
+	http.HandleFunc("/ready", n.ReadyCheck)
 	http.HandleFunc("/config/ui-client", n.cfgUIClient)
 
 	return n
+}
+
+func HealthCheck(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+
+	jsonStatus := HealthStatus{Status: "OK"}
+	data, err := json.Marshal(&jsonStatus)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+func (n *Networking) ReadyCheck(w http.ResponseWriter, r *http.Request) {
+	var jsonStatus ReadyStatus
+
+	w.Header().Set("Content-Type", "application/json")
+
+	pingErr := n.db.Ping()
+	mqttOK := n.mqtt.IsConnected()
+
+	if !mqttOK && pingErr != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonStatus = ReadyStatus{Database: "FAIL", MessageBus: "FAIL"}
+	} else if !mqttOK {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonStatus = ReadyStatus{Database: "OK", MessageBus: "FAIL"}
+	} else if pingErr != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		jsonStatus = ReadyStatus{Database: "FAIL", MessageBus: "OK"}
+	} else {
+		jsonStatus = ReadyStatus{Database: "OK", MessageBus: "OK"}
+	}
+
+	data, err := json.Marshal(&jsonStatus)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf("{\"error\": %q}", err.Error())))
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }
 
 func (n *Networking) ListenAndServe(address, port string) error {

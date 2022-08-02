@@ -1,6 +1,7 @@
 package main
 
 import (
+	"github.com/google/uuid"
 	// Std
 	"runtime"
 	"strconv"
@@ -10,7 +11,9 @@ import (
 	"github.com/momentum-xyz/controller/internal/config"
 	"github.com/momentum-xyz/controller/internal/extension"
 	"github.com/momentum-xyz/controller/internal/logger"
+	safemqtt "github.com/momentum-xyz/controller/internal/mqtt"
 	"github.com/momentum-xyz/controller/internal/net"
+	"github.com/momentum-xyz/controller/internal/storage"
 	"github.com/momentum-xyz/controller/internal/universe"
 	"github.com/momentum-xyz/controller/pkg/message"
 
@@ -40,9 +43,22 @@ func run() error {
 	logger.SetLevel(zapcore.Level(cfg.Settings.LogLevel))
 	defer logger.Close()
 
-	networking := net.NewNetworking(cfg)
+	db, err := storage.OpenDB(&cfg.MySQL)
+	if err != nil {
+		return errors.WithMessage(err, "failed to init storage")
+	}
+	if err := storage.MigrateDb(db, &cfg.MySQL); err != nil {
+		return errors.WithMessage(err, "failed to migrate db")
+	}
+
+	mqttClient, err := safemqtt.InitMQTTClient(&cfg.MQTT, "worlds_controller-"+uuid.NewString())
+	if err != nil {
+		return errors.WithMessage(err, "failed to init mqtt client")
+	}
+
+	networking := net.NewNetworking(cfg, db, mqttClient)
 	msgBuilder := message.InitBuilder(20, 1024*32)
-	hub, err := universe.NewControllerHub(cfg, networking, msgBuilder)
+	hub, err := universe.NewControllerHub(cfg, networking, msgBuilder, db, mqttClient)
 	if err != nil {
 		return errors.WithMessage(err, "failed to create controller hub")
 	}
